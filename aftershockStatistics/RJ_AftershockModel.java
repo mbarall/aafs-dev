@@ -700,11 +700,15 @@ public abstract class RJ_AftershockModel {
 				for (int cIndex = c_support_lo; cIndex < c_support_hi; cIndex++) {
 					if (apc_likelihood[aIndex][pIndex][cIndex] > apc_max_tail_element) {
 						double expectedVal = AftershockStatsCalc.getExpectedNumEvents(get_a(aIndex), b, magMain, magMin, get_p(pIndex), get_c(cIndex), tMinDays, tMaxDays);
-						double poissonProb = 1 - Math.exp(-expectedVal);
+						double poissonProb = 1.0 - Math.exp(-expectedVal);
 						result += (poissonProb * apc_likelihood[aIndex][pIndex][cIndex] / apc_support_total);
 					}
 				}
 			}
+		}
+
+		if (result > 1.0) {
+			result = 1.0;		// in case rounding produces a result a little larger than 1.0
 		}
 
 		return result;

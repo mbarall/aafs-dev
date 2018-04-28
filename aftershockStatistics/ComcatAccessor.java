@@ -95,7 +95,7 @@ public class ComcatAccessor {
 	/**
 	 * Fetches an event with the given ID, e.g. "ci37166079"
 	 * @param eventID = Earthquake event id.
-	 * @param wrapLon = Desired longitude range: false = -180.0 to 180.0; true = 0 to 360.
+	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
 	 * @return
 	 * The return value can be null if the event could not be obtained.
 	 * A null return may indicate a temporary condition (e.g., Comcat not responding) or a
@@ -112,7 +112,7 @@ public class ComcatAccessor {
 	/**
 	 * Fetches an event with the given ID, e.g. "ci37166079"
 	 * @param eventID = Earthquake event id.
-	 * @param wrapLon = Desired longitude range: false = -180.0 to 180.0; true = 0 to 360.
+	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
 	 * @param extendedInfo = True to return extended information, see eventToObsRup below.
 	 * @return
 	 * The return value can be null if the event could not be obtained.
@@ -306,7 +306,7 @@ public class ComcatAccessor {
 	 * @param minDepth = Minimum depth, in km.  Comcat requires a value from -100 to +1000.
 	 * @param maxDepth = Minimum depth, in km.  Comcat requires a value from -100 to +1000.
 	 * @param region = Region to search.  Events not in this region are filtered out.
-	 * @param wrapLon = Desired longitude range: false = -180.0 to 180.0; true = 0 to 360.
+	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
 	 * @return
 	 * Note: The mainshock parameter must be a return value from fetchEvent() above.
 	 * Note: As a special case, if maxDays == minDays, then the end time is the current time.

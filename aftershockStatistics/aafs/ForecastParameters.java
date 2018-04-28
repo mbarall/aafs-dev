@@ -33,13 +33,21 @@ public class ForecastParameters {
 
 	//----- Constants -----
 
-	// Parameter status codes.
+	// Parameter fetch methods.
 
-	public static final int PSTAT_MIN = 0;			// Minimum value
-	public static final int PSTAT_OMITTED = 0;		// Parameters omitted or not available
-	public static final int PSTAT_AUTO = 1;			// Parameters determined by automatic system
-	public static final int PSTAT_ANALYST = 2;		// Parameters selected by analyst
-	public static final int PSTAT_MAX = 2;			// Maximum value
+	public static final int FETCH_METH_MIN = 0;			// Minimum value
+	public static final int FETCH_METH_AUTO = 0;		// Parameters determined by automatic system (default)
+	public static final int FETCH_METH_ANALYST = 1;		// Parameters selected by analyst
+	public static final int FETCH_METH_SUPPRESS = 2;	// Do not fetch parameters
+	public static final int FETCH_METH_MAX = 2;			// Maximum value
+
+	// Result calculation methods.
+
+	public static final int CALC_METH_MIN = 0;			// Minimum value
+	public static final int CALC_METH_AUTO_PDL = 0;		// Calculate by automatic system, eligible for PDL (default)
+	public static final int CALC_METH_AUTO_NO_PDL = 1;	// Calculate by automatic system, not eligible for PDL
+	public static final int CALC_METH_SUPPRESS = 2;		// Do not calculate result
+	public static final int CALC_METH_MAX = 2;			// Maximum value
 
 
 	//----- Root parameters -----
@@ -54,11 +62,58 @@ public class ForecastParameters {
 	public long forecast_time = 0L;
 
 
+	//----- Control parameters -----
+
+	// Calculation method for generic result.
+
+	public int generic_calc_meth = CALC_METH_AUTO_PDL;
+
+	// Calculation method for sequence specific result.
+
+	public int seq_spec_calc_meth = CALC_METH_AUTO_PDL;
+
+	// Calculation method for bayesian result.
+
+	public int bayesian_calc_meth = CALC_METH_AUTO_PDL;
+
+	// Set control parameters to default.
+
+	public void set_default_control_params () {
+		generic_calc_meth = CALC_METH_AUTO_PDL;
+		seq_spec_calc_meth = CALC_METH_AUTO_PDL;
+		bayesian_calc_meth = CALC_METH_AUTO_PDL;
+		return;
+	}
+
+	// Fetch control parameters.
+
+	public void fetch_control_params (ForecastParameters prior_params) {
+
+		// If there are prior parameters, copy them
+
+		if (prior_params != null) {
+			generic_calc_meth  = prior_params.generic_calc_meth;
+			seq_spec_calc_meth = prior_params.seq_spec_calc_meth;
+			bayesian_calc_meth = prior_params.bayesian_calc_meth;
+			return;
+		}
+
+		// Use defaults
+	
+		set_default_control_params();
+		return;
+	}
+
+
 	//----- Mainshock parameters -----
 
-	// Mainshock parameter status code.
+	// Mainshock parameter fetch method.
 
-	public int mainshock_pstat = PSTAT_OMITTED;
+	public int mainshock_fetch_meth = FETCH_METH_AUTO;
+
+	// Mainshock parameter available flag.
+
+	public boolean mainshock_avail = false;
 
 	// Mainshock time, in milliseconds since the epoch.
 
@@ -79,6 +134,17 @@ public class ForecastParameters {
 	// Mainshock depth, in kilometers, positive underground.
 
 	public double mainshock_depth = 0.0;
+
+	// Set mainshock parameters to default.
+
+	public void set_default_mainshock_params () {
+		mainshock_time = 0L;
+		mainshock_mag = 0.0;
+		mainshock_lat = 0.0;
+		mainshock_lon = 0.0;
+		mainshock_depth = 0.0;
+		return;
+	}
 
 	// Set mainshock parameters from rupture information.
 
@@ -130,18 +196,35 @@ public class ForecastParameters {
 
 	public void fetch_mainshock_params (ForecastParameters prior_params) {
 
-		// If the prior parameters have analyst-supplied values, copy them
+		// Inherit fetch method from prior parameters, or use default
 
 		if (prior_params != null) {
-			if (prior_params.mainshock_pstat == PSTAT_ANALYST) {
-				mainshock_pstat = prior_params.mainshock_pstat;
-				mainshock_time = prior_params.mainshock_time;
-				mainshock_mag = prior_params.mainshock_mag;
-				mainshock_lat = prior_params.mainshock_lat;
-				mainshock_lon = prior_params.mainshock_lon;
-				mainshock_depth = prior_params.mainshock_depth;
-				return;
-			}
+			mainshock_fetch_meth = prior_params.mainshock_fetch_meth;
+		} else {
+			mainshock_fetch_meth = FETCH_METH_AUTO;
+		}
+
+		// Handle non-auto fetch methods
+
+		switch (mainshock_fetch_meth) {
+
+		// Analyst, copy from prior parameters
+
+		case FETCH_METH_ANALYST:
+			mainshock_avail = prior_params.mainshock_avail;
+			mainshock_time = prior_params.mainshock_time;
+			mainshock_mag = prior_params.mainshock_mag;
+			mainshock_lat = prior_params.mainshock_lat;
+			mainshock_lon = prior_params.mainshock_lon;
+			mainshock_depth = prior_params.mainshock_depth;
+			return;
+
+		// Suppress, make not available
+
+		case FETCH_METH_SUPPRESS:
+			mainshock_avail = false;
+			set_default_mainshock_params();
+			return;
 		}
 
 		// Fetch parameters from Comcat
@@ -159,7 +242,7 @@ public class ForecastParameters {
 			throw new RuntimeException("ForecastParameters.fetch_mainshock_params: Comcat returned nothing");
 		}
 
-		mainshock_pstat = PSTAT_AUTO;
+		mainshock_avail = true;
 		set_eqk_rupture (rup);
 		return;
 	}
@@ -167,9 +250,13 @@ public class ForecastParameters {
 
 	//----- R&J generic parameters -----
 
-	// Generic parameter status code.
+	// Generic parameter fetch method.
 
-	public int generic_pstat = PSTAT_OMITTED;
+	public int generic_fetch_meth = FETCH_METH_AUTO;
+
+	// Generic parameter available flag.
+
+	public boolean generic_avail = false;
 
 	// Tectonic regime (null iff omitted).
 	// (For analyst-supplied values, cannot be null, but can be an empty string,
@@ -181,37 +268,61 @@ public class ForecastParameters {
 
 	public GenericRJ_Parameters generic_params = null;
 
+	// Set generic parameters to default.
+
+	public void set_default_generic_params () {
+		generic_regime = null;
+		generic_params = null;
+		return;
+	}
+
 	// Fetch generic parameters.
 	// Note: Mainshock parameters must be fetched first.
 
 	public void fetch_generic_params (ForecastParameters prior_params) {
 
-		// If the prior parameters have analyst-supplied values, copy them
+		// Inherit fetch method from prior parameters, or use default
 
 		if (prior_params != null) {
-			if (prior_params.generic_pstat == PSTAT_ANALYST) {
-				generic_pstat = prior_params.generic_pstat;
-				generic_regime = prior_params.generic_regime;
-				generic_params = prior_params.generic_params;
-				return;
-			}
+			generic_fetch_meth = prior_params.generic_fetch_meth;
+		} else {
+			generic_fetch_meth = FETCH_METH_AUTO;
+		}
+
+		// Handle non-auto fetch methods
+
+		switch (generic_fetch_meth) {
+
+		// Analyst, copy from prior parameters
+
+		case FETCH_METH_ANALYST:
+			generic_avail = prior_params.generic_avail;
+			generic_regime = prior_params.generic_regime;
+			generic_params = prior_params.generic_params;
+			return;
+
+		// Suppress, make not available
+
+		case FETCH_METH_SUPPRESS:
+			generic_avail = false;
+			set_default_generic_params();
+			return;
 		}
 
 		// If we don't have mainshock parameters, then we can't fetch generic parameters
 
-		if (mainshock_pstat == PSTAT_OMITTED) {
-			generic_pstat = PSTAT_OMITTED;
-			generic_regime = null;
-			generic_params = null;
+		if (!( mainshock_avail )) {
+			generic_avail = false;
+			set_default_generic_params();
 			return;
 		}
 
 		// Fetch parameters based on mainshock location
 		
 		GenericRJ_ParametersFetch fetch = new GenericRJ_ParametersFetch();
-		OAFTectonicRegime regime = fetch.getRegion(new Location (mainshock_lat, mainshock_lon, mainshock_depth));
+		OAFTectonicRegime regime = fetch.getRegion (get_eqk_location());
 
-		generic_pstat = PSTAT_AUTO;
+		generic_avail = true;
 		generic_regime = regime.toString();
 		generic_params = fetch.get(regime);
 
@@ -221,9 +332,13 @@ public class ForecastParameters {
 
 	//----- R&J magnitude of completeness parameters -----
 
-	// Magnitude of completeness parameter status code.
+	// Magnitude of completeness parameter fetch method.
 
-	public int mag_comp_pstat = PSTAT_OMITTED;
+	public int mag_comp_fetch_meth = FETCH_METH_AUTO;
+
+	// Magnitude of completeness parameter available flag.
+
+	public boolean mag_comp_avail = false;
 
 	// Tectonic regime (null iff omitted).
 	// (For analyst-supplied values, cannot be null, but can be an empty string,
@@ -235,28 +350,52 @@ public class ForecastParameters {
 
 	public MagCompPage_Parameters mag_comp_params = null;
 
+	// Set magnitude of completeness parameters to default.
+
+	public void set_default_mag_comp_params () {
+		mag_comp_regime = null;
+		mag_comp_params = null;
+		return;
+	}
+
 	// Fetch magnitude of completeness parameters.
 	// Note: Mainshock parameters must be fetched first.
 
 	public void fetch_mag_comp_params (ForecastParameters prior_params) {
 
-		// If the prior parameters have analyst-supplied values, copy them
+		// Inherit fetch method from prior parameters, or use default
 
 		if (prior_params != null) {
-			if (prior_params.mag_comp_pstat == PSTAT_ANALYST) {
-				mag_comp_pstat = prior_params.mag_comp_pstat;
-				mag_comp_regime = prior_params.mag_comp_regime;
-				mag_comp_params = prior_params.mag_comp_params;
-				return;
-			}
+			mag_comp_fetch_meth = prior_params.mag_comp_fetch_meth;
+		} else {
+			mag_comp_fetch_meth = FETCH_METH_AUTO;
+		}
+
+		// Handle non-auto fetch methods
+
+		switch (mag_comp_fetch_meth) {
+
+		// Analyst, copy from prior parameters
+
+		case FETCH_METH_ANALYST:
+			mag_comp_avail = prior_params.mag_comp_avail;
+			mag_comp_regime = prior_params.mag_comp_regime;
+			mag_comp_params = prior_params.mag_comp_params;
+			return;
+
+		// Suppress, make not available
+
+		case FETCH_METH_SUPPRESS:
+			mag_comp_avail = false;
+			set_default_mag_comp_params();
+			return;
 		}
 
 		// If we don't have mainshock parameters, then we can't fetch magnitude of completeness parameters
 
-		if (mainshock_pstat == PSTAT_OMITTED) {
-			mag_comp_pstat = PSTAT_OMITTED;
-			mag_comp_regime = null;
-			mag_comp_params = null;
+		if (!( mainshock_avail )) {
+			mag_comp_avail = false;
+			set_default_mag_comp_params();
 			return;
 		}
 
@@ -265,7 +404,7 @@ public class ForecastParameters {
 		MagCompPage_ParametersFetch fetch = new MagCompPage_ParametersFetch();
 		OAFTectonicRegime regime = fetch.getRegion (get_eqk_location());
 
-		mag_comp_pstat = PSTAT_AUTO;
+		mag_comp_avail = true;
 		mag_comp_regime = regime.toString();
 		mag_comp_params = fetch.get(regime);
 
@@ -275,40 +414,68 @@ public class ForecastParameters {
 
 	//----- R&J sequence specific parameters -----
 
-	// Sequence specific parameter status code.
+	// Sequence specific parameter fetch method.
 
-	public int seq_spec_pstat = PSTAT_OMITTED;
+	public int seq_spec_fetch_meth = FETCH_METH_AUTO;
+
+	// Sequence specific parameter available flag.
+
+	public boolean seq_spec_avail = false;
 
 	// Sequence specific parameters (null iff omitted).
 
 	public SeqSpecRJ_Parameters seq_spec_params = null;
+
+	// Set sequence specific parameters to default.
+
+	public void set_default_seq_spec_params () {
+		seq_spec_params = null;
+		return;
+	}
 
 	// Fetch sequence specific parameters.
 	// Note: Generic parameters must be fetched first.
 
 	public void fetch_seq_spec_params (ForecastParameters prior_params) {
 
-		// If the prior parameters have analyst-supplied values, copy them
+		// Inherit fetch method from prior parameters, or use default
 
 		if (prior_params != null) {
-			if (prior_params.seq_spec_pstat == PSTAT_ANALYST) {
-				seq_spec_pstat = prior_params.seq_spec_pstat;
-				seq_spec_params = prior_params.seq_spec_params;
-				return;
-			}
+			seq_spec_fetch_meth = prior_params.seq_spec_fetch_meth;
+		} else {
+			seq_spec_fetch_meth = FETCH_METH_AUTO;
 		}
 
-		// If we don't have generic parameters, then we can't make sequence specific parameters
+		// Handle non-auto fetch methods
 
-		if (generic_pstat == PSTAT_OMITTED) {
-			seq_spec_pstat = PSTAT_OMITTED;
-			seq_spec_params = null;
+		switch (seq_spec_fetch_meth) {
+
+		// Analyst, copy from prior parameters
+
+		case FETCH_METH_ANALYST:
+			seq_spec_avail = prior_params.seq_spec_avail;
+			seq_spec_params = prior_params.seq_spec_params;
+			return;
+
+		// Suppress, make not available
+
+		case FETCH_METH_SUPPRESS:
+			seq_spec_avail = false;
+			set_default_seq_spec_params();
+			return;
+		}
+
+		// If we don't have generic parameters, then we can't fetch sequence specific parameters
+
+		if (!( generic_avail )) {
+			seq_spec_avail = false;
+			set_default_seq_spec_params();
 			return;
 		}
 
 		// Fetch parameters based on generic parameters
 
-		seq_spec_pstat = PSTAT_AUTO;
+		seq_spec_avail = true;
 		seq_spec_params = new SeqSpecRJ_Parameters(generic_params);
 
 		return;
@@ -317,9 +484,13 @@ public class ForecastParameters {
 
 	//----- Aftershock search parameters -----
 
-	// Aftershock search parameter status code.
+	// Aftershock search parameter fetch method.
 
-	public int aftershock_search_pstat = PSTAT_OMITTED;
+	public int aftershock_search_fetch_meth = FETCH_METH_AUTO;
+
+	// Aftershock search parameter available flag.
+
+	public boolean aftershock_search_avail = false;
 
 	// Aftershock search region (null iff omitted).
 
@@ -343,38 +514,69 @@ public class ForecastParameters {
 
 	public double max_depth = 700.0;
 
+	// Set aftershock search parameters to default.
+
+	public void set_default_aftershock_search_params () {
+		aftershock_search_region = null;
+		min_days = 0.0;
+		max_days = 0.0;
+		min_depth = 0.0;
+		max_depth = 700.0;
+		return;
+	}
+
 	// Fetch aftershock search region.
 	// Note: Mainshock parameters must be fetched first.
 
 	public void fetch_aftershock_search_region (ForecastParameters prior_params) {
 
-		// Set maximum search time to now
-
-		//max_days = (System.currentTimeMillis() - mainshock_time)/ComcatAccessor.day_millis;
-		max_days = (forecast_time - mainshock_time)/ComcatAccessor.day_millis;
-
-		// If the prior parameters have analyst-supplied values, copy them
+		// Inherit fetch method from prior parameters, or use default
 
 		if (prior_params != null) {
-			if (prior_params.aftershock_search_pstat == PSTAT_ANALYST) {
-				aftershock_search_pstat = prior_params.aftershock_search_pstat;
-				aftershock_search_region = prior_params.aftershock_search_region;
-				min_days = prior_params.min_days;
-				min_depth = prior_params.min_depth;
-				max_depth = prior_params.max_depth;
-				return;
-			}
+			aftershock_search_fetch_meth = prior_params.aftershock_search_fetch_meth;
+		} else {
+			aftershock_search_fetch_meth = FETCH_METH_AUTO;
 		}
 
-		// If we don't have mainshock parameters, then we can't fetch search region
+		// Handle non-auto fetch methods
 
-		if (mainshock_pstat == PSTAT_OMITTED) {
-			aftershock_search_pstat = PSTAT_OMITTED;
-			aftershock_search_region = null;
-			min_days = 0.0;
-			max_days = 0.0;
-			min_depth = 0.0;
-			max_depth = 700.0;
+		switch (aftershock_search_fetch_meth) {
+
+		// Analyst, copy from prior parameters
+
+		case FETCH_METH_ANALYST:
+			aftershock_search_avail = prior_params.aftershock_search_avail;
+			aftershock_search_region = prior_params.aftershock_search_region;
+			min_days = prior_params.min_days;
+			max_days = prior_params.max_days;
+			min_depth = prior_params.min_depth;
+			max_depth = prior_params.max_depth;
+
+			// Special handling for max_days, try to make it match forecast_time if available
+
+			if (aftershock_search_avail) {
+				if (mainshock_avail) {
+					max_days = (forecast_time - mainshock_time)/ComcatAccessor.day_millis;
+				} else if (prior_params.mainshock_avail) {
+					max_days = (forecast_time - prior_params.mainshock_time)/ComcatAccessor.day_millis;
+				}
+			}
+
+			return;
+
+		// Suppress, make not available
+
+		case FETCH_METH_SUPPRESS:
+			aftershock_search_avail = false;
+			set_default_aftershock_search_params();
+			return;
+		}
+
+		// If we don't have mainshock parameters, then we can't fetch aftershock search parameters
+
+		if (!( mainshock_avail )) {
+			aftershock_search_avail = false;
+			set_default_aftershock_search_params();
 			return;
 		}
 
@@ -390,6 +592,9 @@ public class ForecastParameters {
 		// Time range used for sampling aftershocks, in days since the mainshock
 
 		min_days = 0.0;
+
+		//max_days = (System.currentTimeMillis() - mainshock_time)/ComcatAccessor.day_millis;
+		max_days = (forecast_time - mainshock_time)/ComcatAccessor.day_millis;
 
 		// Depth range used for sampling aftershocks, in kilometers
 
@@ -427,7 +632,7 @@ public class ForecastParameters {
 			
 		aftershock_search_region = SphRegion.makeCircle (new SphLatLon(centroid), radius);
 
-		aftershock_search_pstat = PSTAT_AUTO;
+		aftershock_search_avail = true;
 		return;
 	}
 
@@ -443,6 +648,7 @@ public class ForecastParameters {
 	public void fetch_all (String the_event_id, long the_forecast_time, ForecastParameters prior_params) {
 		event_id = the_event_id;
 		forecast_time = the_forecast_time;
+		fetch_control_params (prior_params);
 		fetch_mainshock_params (prior_params);
 		fetch_generic_params (prior_params);
 		fetch_mag_comp_params (prior_params);
@@ -459,8 +665,13 @@ public class ForecastParameters {
 		+ "event_id = " + event_id + "\n"
 		+ "forecast_time = " + forecast_time + "\n"
 
-		+ "mainshock_pstat = " + mainshock_pstat + "\n"
-		+ ((mainshock_pstat == PSTAT_OMITTED) ? "" : (
+		+ "generic_calc_meth = " + generic_calc_meth + "\n"
+		+ "seq_spec_calc_meth = " + seq_spec_calc_meth + "\n"
+		+ "bayesian_calc_meth = " + bayesian_calc_meth + "\n"
+
+		+ "mainshock_fetch_meth = " + mainshock_fetch_meth + "\n"
+		+ "mainshock_avail = " + mainshock_avail + "\n"
+		+ ((!mainshock_avail) ? "" : (
 			"mainshock_time = " + mainshock_time + "\n"
 			+ "mainshock_mag = " + mainshock_mag + "\n"
 			+ "mainshock_lat = " + mainshock_lat + "\n"
@@ -468,25 +679,29 @@ public class ForecastParameters {
 			+ "mainshock_depth = " + mainshock_depth + "\n"
 		))
 
-		+ "generic_pstat = " + generic_pstat + "\n"
-		+ ((generic_pstat == PSTAT_OMITTED) ? "" : (
+		+ "generic_fetch_meth = " + generic_fetch_meth + "\n"
+		+ "generic_avail = " + generic_avail + "\n"
+		+ ((!generic_avail) ? "" : (
 			"generic_regime = " + generic_regime + "\n"
 			+ "generic_params = " + generic_params.toString() + "\n"
 		))
 
-		+ "mag_comp_pstat = " + mag_comp_pstat + "\n"
-		+ ((mag_comp_pstat == PSTAT_OMITTED) ? "" : (
+		+ "mag_comp_fetch_meth = " + mag_comp_fetch_meth + "\n"
+		+ "mag_comp_avail = " + mag_comp_avail + "\n"
+		+ ((!mag_comp_avail) ? "" : (
 			"mag_comp_regime = " + mag_comp_regime + "\n"
 			+ "mag_comp_params = " + mag_comp_params.toString() + "\n"
 		))
 
-		+ "seq_spec_pstat = " + seq_spec_pstat + "\n"
-		+ ((seq_spec_pstat == PSTAT_OMITTED) ? "" : (
+		+ "seq_spec_fetch_meth = " + seq_spec_fetch_meth + "\n"
+		+ "seq_spec_avail = " + seq_spec_avail + "\n"
+		+ ((!seq_spec_avail) ? "" : (
 			"seq_spec_params = " + seq_spec_params.toString() + "\n"
 		))
 
-		+ "aftershock_search_pstat = " + aftershock_search_pstat + "\n"
-		+ ((aftershock_search_pstat == PSTAT_OMITTED) ? "" : (
+		+ "aftershock_search_fetch_meth = " + aftershock_search_fetch_meth + "\n"
+		+ "aftershock_search_avail = " + aftershock_search_avail + "\n"
+		+ ((!aftershock_search_avail) ? "" : (
 			"aftershock_search_region = " + aftershock_search_region.toString() + "\n"
 			+ "min_days = " + min_days + "\n"
 			+ "max_days = " + max_days + "\n"
@@ -532,8 +747,13 @@ public class ForecastParameters {
 		writer.marshalString ("event_id"       , event_id       );
 		writer.marshalLong   ("forecast_time"  , forecast_time  );
 
-		writer.marshalInt ("mainshock_pstat", mainshock_pstat);
-		if (mainshock_pstat != PSTAT_OMITTED) {
+		writer.marshalInt ("generic_calc_meth" , generic_calc_meth );
+		writer.marshalInt ("seq_spec_calc_meth", seq_spec_calc_meth);
+		writer.marshalInt ("bayesian_calc_meth", bayesian_calc_meth);
+
+		writer.marshalInt     ("mainshock_fetch_meth", mainshock_fetch_meth);
+		writer.marshalBoolean ("mainshock_avail"     , mainshock_avail     );
+		if (mainshock_avail) {
 			writer.marshalLong   ("mainshock_time" , mainshock_time );
 			writer.marshalDouble ("mainshock_mag"  , mainshock_mag  );
 			writer.marshalDouble ("mainshock_lat"  , mainshock_lat  );
@@ -541,25 +761,29 @@ public class ForecastParameters {
 			writer.marshalDouble ("mainshock_depth", mainshock_depth);
 		}
 
-		writer.marshalInt ("generic_pstat", generic_pstat);
-		if (generic_pstat != PSTAT_OMITTED) {
+		writer.marshalInt     ("generic_fetch_meth", generic_fetch_meth);
+		writer.marshalBoolean ("generic_avail"     , generic_avail     );
+		if (generic_avail) {
 			writer.marshalString ("generic_regime", generic_regime);
 			generic_params.marshal (writer, "generic_params");
 		}
 
-		writer.marshalInt ("mag_comp_pstat", mag_comp_pstat);
-		if (mag_comp_pstat != PSTAT_OMITTED) {
+		writer.marshalInt     ("mag_comp_fetch_meth", mag_comp_fetch_meth);
+		writer.marshalBoolean ("mag_comp_avail"     , mag_comp_avail     );
+		if (mag_comp_avail) {
 			writer.marshalString ("mag_comp_regime", mag_comp_regime);
 			mag_comp_params.marshal (writer, "mag_comp_params");
 		}
 
-		writer.marshalInt ("seq_spec_pstat", seq_spec_pstat);
-		if (seq_spec_pstat != PSTAT_OMITTED) {
+		writer.marshalInt     ("seq_spec_fetch_meth", seq_spec_fetch_meth);
+		writer.marshalBoolean ("seq_spec_avail"     , seq_spec_avail     );
+		if (seq_spec_avail) {
 			seq_spec_params.marshal (writer, "seq_spec_params");
 		}
 
-		writer.marshalInt ("aftershock_search_pstat", aftershock_search_pstat);
-		if (aftershock_search_pstat != PSTAT_OMITTED) {
+		writer.marshalInt     ("aftershock_search_fetch_meth", aftershock_search_fetch_meth);
+		writer.marshalBoolean ("aftershock_search_avail"     , aftershock_search_avail     );
+		if (aftershock_search_avail) {
 			SphRegion.marshal_poly (writer, "aftershock_search_region", aftershock_search_region);
 			writer.marshalDouble ("min_days" , min_days );
 			writer.marshalDouble ("max_days" , max_days );
@@ -583,48 +807,51 @@ public class ForecastParameters {
 		event_id        = reader.unmarshalString ("event_id"       );
 		forecast_time   = reader.unmarshalLong   ("forecast_time"  );
 
-		mainshock_pstat = reader.unmarshalInt ("mainshock_pstat", PSTAT_MIN, PSTAT_MAX);
-		if (mainshock_pstat != PSTAT_OMITTED) {
+		generic_calc_meth  = reader.unmarshalInt ("generic_calc_meth" , CALC_METH_MIN, CALC_METH_MAX);
+		seq_spec_calc_meth = reader.unmarshalInt ("seq_spec_calc_meth", CALC_METH_MIN, CALC_METH_MAX);
+		bayesian_calc_meth = reader.unmarshalInt ("bayesian_calc_meth", CALC_METH_MIN, CALC_METH_MAX);
+
+		mainshock_fetch_meth = reader.unmarshalInt     ("mainshock_fetch_meth", FETCH_METH_MIN, FETCH_METH_MAX);
+		mainshock_avail      = reader.unmarshalBoolean ("mainshock_avail");
+		if (mainshock_avail) {
 			mainshock_time  = reader.unmarshalLong   ("mainshock_time" );
 			mainshock_mag   = reader.unmarshalDouble ("mainshock_mag"  );
 			mainshock_lat   = reader.unmarshalDouble ("mainshock_lat"  );
 			mainshock_lon   = reader.unmarshalDouble ("mainshock_lon"  );
 			mainshock_depth = reader.unmarshalDouble ("mainshock_depth");
 		} else {
-			mainshock_time  = 0L;
-			mainshock_mag   = 0.0;
-			mainshock_lat   = 0.0;
-			mainshock_lon   = 0.0;
-			mainshock_depth = 0.0;
+			set_default_mainshock_params();
 		}
 
-		generic_pstat = reader.unmarshalInt ("generic_pstat", PSTAT_MIN, PSTAT_MAX);
-		if (generic_pstat != PSTAT_OMITTED) {
+		generic_fetch_meth = reader.unmarshalInt     ("generic_fetch_meth", FETCH_METH_MIN, FETCH_METH_MAX);
+		generic_avail      = reader.unmarshalBoolean ("generic_avail");
+		if (generic_avail) {
 			generic_regime = reader.unmarshalString ("generic_regime");
 			generic_params = (new GenericRJ_Parameters()).unmarshal (reader, "generic_params");
 		} else {
-			generic_regime = null;
-			generic_params = null;
+			set_default_generic_params();
 		}
 
-		mag_comp_pstat = reader.unmarshalInt ("mag_comp_pstat", PSTAT_MIN, PSTAT_MAX);
-		if (mag_comp_pstat != PSTAT_OMITTED) {
+		mag_comp_fetch_meth = reader.unmarshalInt     ("mag_comp_fetch_meth", FETCH_METH_MIN, FETCH_METH_MAX);
+		mag_comp_avail      = reader.unmarshalBoolean ("mag_comp_avail");
+		if (mag_comp_avail) {
 			mag_comp_regime = reader.unmarshalString ("mag_comp_regime");
 			mag_comp_params = (new MagCompPage_Parameters()).unmarshal (reader, "mag_comp_params");
 		} else {
-			mag_comp_regime = null;
-			mag_comp_params = null;
+			set_default_mag_comp_params();
 		}
 
-		seq_spec_pstat = reader.unmarshalInt ("seq_spec_pstat", PSTAT_MIN, PSTAT_MAX);
-		if (seq_spec_pstat != PSTAT_OMITTED) {
+		seq_spec_fetch_meth = reader.unmarshalInt     ("seq_spec_fetch_meth", FETCH_METH_MIN, FETCH_METH_MAX);
+		seq_spec_avail      = reader.unmarshalBoolean ("seq_spec_avail");
+		if (seq_spec_avail) {
 			seq_spec_params = (new SeqSpecRJ_Parameters()).unmarshal (reader, "seq_spec_params");
 		} else {
-			seq_spec_params = null;
+			set_default_seq_spec_params();
 		}
 
-		aftershock_search_pstat = reader.unmarshalInt ("aftershock_search_pstat", PSTAT_MIN, PSTAT_MAX);
-		if (aftershock_search_pstat != PSTAT_OMITTED) {
+		aftershock_search_fetch_meth = reader.unmarshalInt     ("aftershock_search_fetch_meth", FETCH_METH_MIN, FETCH_METH_MAX);
+		aftershock_search_avail      = reader.unmarshalBoolean ("aftershock_search_avail");
+		if (aftershock_search_avail) {
 			aftershock_search_region = SphRegion.unmarshal_poly (reader, "aftershock_search_region");
 			if (aftershock_search_region == null) {
 				throw new MarshalException ("Aftershock search region is null");
@@ -634,11 +861,7 @@ public class ForecastParameters {
 			min_depth = reader.unmarshalDouble ("min_depth");
 			max_depth = reader.unmarshalDouble ("max_depth");
 		} else {
-			aftershock_search_region = null;
-			min_days  = 0.0;
-			max_days  = 0.0;
-			min_depth = 0.0;
-			max_depth = 700.0;
+			set_default_aftershock_search_params();
 		}
 
 		return;
