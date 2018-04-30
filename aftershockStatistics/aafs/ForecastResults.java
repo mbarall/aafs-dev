@@ -135,6 +135,38 @@ public class ForecastResults {
 		return;
 	}
 
+	// rebuild_catalog_results - Rebuild transient catalog results.
+
+	public void rebuild_catalog_results (ForecastParameters params, CompactEqkRupList the_catalog_aftershocks) {
+
+		// If there are results to rebuild ...
+
+		if (catalog_result_avail) {
+
+			// Parameters must have mainshock, aftershock search region
+
+			if (!( params.mainshock_avail && params.aftershock_search_avail )) {
+				throw new RuntimeException("ForecastResults.rebuild_catalog_results: Invalid preconditions");
+			}
+
+			// Check for supplied catalog
+
+			if (!( the_catalog_aftershocks != null )) {
+				throw new RuntimeException("ForecastResults.rebuild_catalog_results: No aftershock catalog supplied");
+			}
+
+			if (!( the_catalog_aftershocks.size() == catalog_eqk_count )) {
+				throw new RuntimeException("ForecastResults.rebuild_catalog_results: Aftershock catalog size mismatch, expecting " + catalog_eqk_count + ", got " + the_catalog_aftershocks.size());
+			}
+
+			// Save catalog
+
+			catalog_aftershocks = the_catalog_aftershocks;
+		}
+
+		return;
+	}
+
 
 	//----- Generic results -----
 
@@ -222,12 +254,44 @@ public class ForecastResults {
 		return;
 	}
 
+	// rebuild_generic_results - Rebuild transient generic results.
+
+	public void rebuild_generic_results (ForecastParameters params) {
+
+		// If there are results to rebuild ...
+
+		if (generic_result_avail) {
+
+			// We need to have catalog results, mainshock parameters, and generic parameters
+
+			if (!( (params.generic_calc_meth != CALC_METH_SUPPRESS)
+					&& catalog_result_avail
+					&& params.mainshock_avail 
+					&& params.generic_avail )) {
+				throw new RuntimeException("ForecastResults.rebuild_generic_results: Invalid preconditions");
+			}
+
+			try {
+
+				// Build the generic model
+
+				ObsEqkRupture mainshock = params.get_eqk_rupture();
+				generic_model = new RJ_AftershockModel_Generic (mainshock.getMag(), params.generic_params);
+
+			} catch (Exception e) {
+				throw new RuntimeException("ForecastResults.rebuild_generic_results: Exception building generic forecast", e);
+			}
+		}
+
+		return;
+	}
+
 
 	//----- Sequence specific results -----
 
 	// Sequence specific result available flag.
 
-	public boolean seq_spec_avail = false;
+	public boolean seq_spec_result_avail = false;
 
 	// Sequence specific results summary.
 
@@ -268,7 +332,7 @@ public class ForecastResults {
 				&& params.mag_comp_avail
 				&& params.seq_spec_avail )) {
 			set_default_seq_spec_results();
-			seq_spec_avail = false;
+			seq_spec_result_avail = false;
 			return;
 		}
 
@@ -307,7 +371,41 @@ public class ForecastResults {
 		// Done
 
 		seq_spec_pdl = false;
-		seq_spec_avail = true;
+		seq_spec_result_avail = true;
+		return;
+	}
+
+	// rebuild_seq_spec_results - Rebuild transient sequence specific results.
+
+	public void rebuild_seq_spec_results (ForecastParameters params) {
+
+		// If there are results to rebuild ...
+
+		if (seq_spec_result_avail) {
+
+			// We need to have catalog results, mainshock parameters, magnitude of completeness parameters, and sequence specific parameters
+
+			if (!( (params.seq_spec_calc_meth != CALC_METH_SUPPRESS)
+					&& catalog_result_avail
+					&& params.mainshock_avail 
+					&& params.mag_comp_avail
+					&& params.seq_spec_avail )) {
+				throw new RuntimeException("ForecastResults.rebuild_seq_spec_results: Invalid preconditions");
+			}
+
+			try {
+
+				// Build the sequence specific model
+
+				ObsEqkRupture mainshock = params.get_eqk_rupture();
+				seq_spec_model = new RJ_AftershockModel_SequenceSpecific (mainshock, catalog_aftershocks,
+					params.min_days, params.max_days, params.mag_comp_params, params.seq_spec_params);
+
+			} catch (Exception e) {
+				throw new RuntimeException("ForecastResults.rebuild_seq_spec_results: Exception building sequence specific forecast", e);
+			}
+		}
+
 		return;
 	}
 
@@ -355,7 +453,7 @@ public class ForecastResults {
 				&& catalog_result_avail
 				&& params.mainshock_avail 
 				&& generic_result_avail
-				&& seq_spec_avail
+				&& seq_spec_result_avail
 				&& RJ_AftershockModel_Bayesian.areModelsEquivalent(generic_model, seq_spec_model) )) {
 			set_default_bayesian_results();
 			bayesian_result_avail = false;
@@ -406,6 +504,40 @@ public class ForecastResults {
 		return;
 	}
 
+	// rebuild_bayesian_results - Rebuild transient bayesian results.
+
+	public void rebuild_bayesian_results (ForecastParameters params) {
+
+		// If there are results to rebuild ...
+
+		if (bayesian_result_avail) {
+
+			// We need to have catalog results, mainshock parameters, compatible generic and sequence specific models
+
+			if (!( (params.bayesian_calc_meth != CALC_METH_SUPPRESS)
+					&& catalog_result_avail
+					&& params.mainshock_avail 
+					&& generic_result_avail
+					&& seq_spec_result_avail
+					&& RJ_AftershockModel_Bayesian.areModelsEquivalent(generic_model, seq_spec_model) )) {
+				throw new RuntimeException("ForecastResults.rebuild_bayesian_results: Invalid preconditions");
+			}
+
+			try {
+
+				// Build the bayesian model
+
+				ObsEqkRupture mainshock = params.get_eqk_rupture();
+				bayesian_model = new RJ_AftershockModel_Bayesian (generic_model, seq_spec_model);
+
+			} catch (Exception e) {
+				throw new RuntimeException("ForecastResults.rebuild_bayesian_results: Exception building bayesian forecast", e);
+			}
+		}
+
+		return;
+	}
+
 
 	//----- Construction -----
 
@@ -424,6 +556,16 @@ public class ForecastResults {
 		return;
 	}
 
+	// Rebuild all transient results.
+
+	public void rebuild_all (ForecastParameters params, CompactEqkRupList the_catalog_aftershocks) {
+		rebuild_catalog_results (params, the_catalog_aftershocks);
+		rebuild_generic_results (params);
+		rebuild_seq_spec_results (params);
+		rebuild_bayesian_results (params);
+		return;
+	}
+
 	// Display our contents
 
 	@Override
@@ -436,6 +578,7 @@ public class ForecastResults {
 			"catalog_start_time = " + catalog_start_time + "\n"
 			+ "catalog_end_time = " + catalog_end_time + "\n"
 			+ "catalog_eqk_count = " + catalog_eqk_count + "\n"
+			+ "catalog_aftershocks = " + ((catalog_aftershocks == null) ? "null" : "available") + "\n"
 		))
 
 		+ "generic_result_avail = " + generic_result_avail + "\n"
@@ -443,13 +586,15 @@ public class ForecastResults {
 			"generic_summary = " + generic_summary.toString() + "\n"
 			+ "generic_json = " + generic_json + "\n"
 			+ "generic_pdl = " + generic_pdl + "\n"
+			+ "generic_model = " + ((generic_model == null) ? "null" : "available") + "\n"
 		))
 
-		+ "seq_spec_avail = " + seq_spec_avail + "\n"
-		+ ((!seq_spec_avail) ? "" : (
+		+ "seq_spec_result_avail = " + seq_spec_result_avail + "\n"
+		+ ((!seq_spec_result_avail) ? "" : (
 			"seq_spec_summary = " + seq_spec_summary.toString() + "\n"
 			+ "seq_spec_json = " + seq_spec_json + "\n"
 			+ "seq_spec_pdl = " + seq_spec_pdl + "\n"
+			+ "seq_spec_model = " + ((seq_spec_model == null) ? "null" : "available") + "\n"
 		))
 
 		+ "bayesian_result_avail = " + bayesian_result_avail + "\n"
@@ -457,6 +602,7 @@ public class ForecastResults {
 			"bayesian_summary = " + bayesian_summary.toString() + "\n"
 			+ "bayesian_json = " + bayesian_json + "\n"
 			+ "bayesian_pdl = " + bayesian_pdl + "\n"
+			+ "bayesian_model = " + ((bayesian_model == null) ? "null" : "available") + "\n"
 		));
 	}
 
@@ -510,8 +656,8 @@ public class ForecastResults {
 			writer.marshalBoolean    ("generic_pdl" , generic_pdl );
 		}
 
-		writer.marshalBoolean ("seq_spec_avail", seq_spec_avail);
-		if (seq_spec_avail) {
+		writer.marshalBoolean ("seq_spec_result_avail", seq_spec_result_avail);
+		if (seq_spec_result_avail) {
 			seq_spec_summary.marshal (writer, "seq_spec_summary");
 			writer.marshalJsonString ("seq_spec_json", seq_spec_json);
 			writer.marshalBoolean    ("seq_spec_pdl" , seq_spec_pdl );
@@ -559,8 +705,8 @@ public class ForecastResults {
 			set_default_generic_results();
 		}
 
-		seq_spec_avail = reader.unmarshalBoolean ("seq_spec_avail");
-		if (seq_spec_avail) {
+		seq_spec_result_avail = reader.unmarshalBoolean ("seq_spec_result_avail");
+		if (seq_spec_result_avail) {
 			seq_spec_summary = (new RJ_Summary_SequenceSpecific()).unmarshal (reader, "seq_spec_summary");
 			seq_spec_json    = reader.unmarshalJsonString ("seq_spec_json");
 			seq_spec_pdl     = reader.unmarshalBoolean    ("seq_spec_pdl" );
@@ -719,7 +865,8 @@ public class ForecastResults {
 		// Get parameters for the event, and display them.
 		// Then get results for the event, and display them.
 		// Then marshal to JSON, and display the JSON.
-		// Then unmarshal, and display the unmarshaled parameters.
+		// Then unmarshal, and display the unmarshaled results.
+		// Then rebuild transient data, and display the results.
 
 		if (args[0].equalsIgnoreCase ("test2")) {
 
@@ -762,6 +909,10 @@ public class ForecastResults {
 			System.out.println ("");
 			System.out.println (results.toString());
 
+			// Save catalog
+
+			CompactEqkRupList saved_catalog_aftershocks = results.catalog_aftershocks;
+
 			// Marshal to JSON
 
 			MarshalImpJsonWriter store = new MarshalImpJsonWriter();
@@ -779,6 +930,13 @@ public class ForecastResults {
 			MarshalImpJsonReader retrieve = new MarshalImpJsonReader (json_string);
 			results = ForecastResults.unmarshal_poly (retrieve, null);
 			retrieve.check_read_complete ();
+
+			System.out.println ("");
+			System.out.println (results.toString());
+
+			// Rebuild transient data
+
+			results.rebuild_all (params, saved_catalog_aftershocks);
 
 			System.out.println ("");
 			System.out.println (results.toString());
