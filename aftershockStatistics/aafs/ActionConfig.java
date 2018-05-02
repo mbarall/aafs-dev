@@ -104,12 +104,12 @@ public class ActionConfig {
 		return param_set.forecast_min_gap;
 	}
 
-	// Get the first element of forecast_times that is >= the supplied min_time.
-	// The return is -1 if the supplied min_time is greater than all elements.
+	// Get the first element of forecast_lags that is >= the supplied min_lag.
+	// The return is -1 if the supplied min_lag is greater than all elements.
 	// If a value is found, it is guaranteed to be a whole number of seconds, from 1 to 10^9 seconds.
 
-	public long get_next_forecast_time (long min_time) {
-		return param_set.get_next_forecast_time (min_time);
+	public long get_next_forecast_lag (long min_lag) {
+		return param_set.get_next_forecast_lag (min_lag);
 	}
 
 	// Get maximum delay in issuing the final forecast, in milliseconds.  Must be positive.
@@ -130,12 +130,12 @@ public class ActionConfig {
 		return param_set.comcat_retry_min_gap;
 	}
 
-	// Get the first element of comcat_retry_times that is >= the supplied min_time.
-	// The return is -1 if the supplied min_time is greater than all elements.
+	// Get the first element of comcat_retry_lags that is >= the supplied min_lag.
+	// The return is -1 if the supplied min_lag is greater than all elements.
 	// If a value is found, it is guaranteed to be a whole number of seconds, from 1 to 10^9 seconds.
 
-	public long get_next_comcat_retry_time (long min_time) {
-		return param_set.get_next_comcat_retry_time (min_time);
+	public long get_next_comcat_retry_lag (long min_lag) {
+		return param_set.get_next_comcat_retry_lag (min_lag);
 	}
 
 
@@ -156,7 +156,7 @@ public class ActionConfig {
 		// Command format:
 		//  test1
 		// Create an object, and display the parameters.
-		// Then read out the time lists.
+		// Then read out the time lag lists.
 
 		if (args[0].equalsIgnoreCase ("test1")) {
 
@@ -175,32 +175,32 @@ public class ActionConfig {
 
 			System.out.println (action_config.toString());
 
-			// Display list of forecast times
+			// Display list of forecast time lags
 
 			System.out.println ("");
 
-			long min_time = 0L;
+			long min_lag = 0L;
 			for (;;) {
-				long forecast_time = action_config.get_next_forecast_time (min_time);
-				if (forecast_time < 0L) {
+				long forecast_lag = action_config.get_next_forecast_lag (min_lag);
+				if (forecast_lag < 0L) {
 					break;
 				}
-				System.out.println (Duration.ofMillis(forecast_time).toString() + "  " + forecast_time);
-				min_time = forecast_time + action_config.get_forecast_min_gap ();
+				System.out.println (Duration.ofMillis(forecast_lag).toString() + "  " + forecast_lag);
+				min_lag = forecast_lag + action_config.get_forecast_min_gap ();
 			}
 
-			// Display list of ComCat retry times
+			// Display list of ComCat retry time lags
 
 			System.out.println ("");
 
-			min_time = 0L;
+			min_lag = 0L;
 			for (;;) {
-				long comcat_retry_time = action_config.get_next_comcat_retry_time (min_time);
-				if (comcat_retry_time < 0L) {
+				long comcat_retry_lag = action_config.get_next_comcat_retry_lag (min_lag);
+				if (comcat_retry_lag < 0L) {
 					break;
 				}
-				System.out.println (Duration.ofMillis(comcat_retry_time).toString() + "  " + comcat_retry_time);
-				min_time = comcat_retry_time + action_config.get_comcat_retry_min_gap ();
+				System.out.println (Duration.ofMillis(comcat_retry_lag).toString() + "  " + comcat_retry_lag);
+				min_lag = comcat_retry_lag + action_config.get_comcat_retry_min_gap ();
 			}
 
 			return;

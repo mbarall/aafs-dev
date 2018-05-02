@@ -25,14 +25,14 @@ import scratch.aftershockStatistics.OAFParameterSet;
  *
  *	"ActionConfigFile" = Integer giving file version number, currently 24001.
  *	"forecast_min_gap" = String giving minimum allowed gap between forcasts, in java.time.Duration format.
- *	"forecast_times" = [ Array giving a list of times at which forecasts are generated, in increasing order.
- *		element = String giving time since mainshock, in java.time.Duration format.
+ *	"forecast_lags" = [ Array giving a list of time lags at which forecasts are generated, in increasing order.
+ *		element = String giving time lag since mainshock, in java.time.Duration format.
  *	]
  *	"forecast_max_delay" = String giving maximum allowed delay for the last forcast, in java.time.Duration format.
  *	"comcat_clock_skew" = Assumed maximum difference between our clock and ComCat clock, in java.time.Duration format.
  *	"comcat_retry_min_gap" = String giving minimum allowed gap between ComCat retries, in java.time.Duration format.
- *	"comcat_retry_times" = [ Array giving a list of times at which ComCat operations are retried, in increasing order.
- *		element = String giving time since first attempt, in java.time.Duration format.
+ *	"comcat_retry_lags" = [ Array giving a list of time lags at which ComCat operations are retried, in increasing order.
+ *		element = String giving time lag since first attempt, in java.time.Duration format.
  *	]
  */
 public class ActionConfigFile {
@@ -43,12 +43,12 @@ public class ActionConfigFile {
 
 	public long forecast_min_gap;
 
-	// Times at which forecasts are generated, in milliseconds.  Must be in increasing order.
-	// This is time since the mainshock.  Must have at least 1 element.
+	// Time lags at which forecasts are generated, in milliseconds.  Must be in increasing order.
+	// This is time lag since the mainshock.  Must have at least 1 element.
 	// The difference between successive elements must be at least the minimum gap.
 	// Each element must be a whole number of seconds, between 1 and 10^9 seconds.
 
-	public ArrayList<Long> forecast_times;
+	public ArrayList<Long> forecast_lags;
 
 	// Maximum delay in issuing the final forecast, in milliseconds.  Must be positive.
 
@@ -62,12 +62,12 @@ public class ActionConfigFile {
 
 	public long comcat_retry_min_gap;
 
-	// Times at which ComCat retries are generated, in milliseconds.  Must be in increasing order.
-	// This is time since the initial attempt.
+	// Time lags at which ComCat retries are generated, in milliseconds.  Must be in increasing order.
+	// This is time lag since the initial attempt.
 	// The difference between successive elements must be at least the minimum gap.
 	// Each element must be a whole number of seconds, between 1 and 10^9 seconds.
 
-	public ArrayList<Long> comcat_retry_times;
+	public ArrayList<Long> comcat_retry_lags;
 
 
 	//----- Construction -----
@@ -82,11 +82,11 @@ public class ActionConfigFile {
 
 	public void clear () {
 		forecast_min_gap = 0L;
-		forecast_times = new ArrayList<Long>();
+		forecast_lags = new ArrayList<Long>();
 		forecast_max_delay = 0L;
 		comcat_clock_skew = 0L;
 		comcat_retry_min_gap = 0L;
-		comcat_retry_times = new ArrayList<Long>();
+		comcat_retry_lags = new ArrayList<Long>();
 		return;
 	}
 
@@ -98,20 +98,20 @@ public class ActionConfigFile {
 				throw new RuntimeException("ActionConfigFile: Invalid forecast_min_gap: " + forecast_min_gap);
 		}
 
-		int n = forecast_times.size();
+		int n = forecast_lags.size();
 		
 		if (!( n > 0 )) {
-				throw new RuntimeException("ActionConfigFile: Empty forecast_times list");
+				throw new RuntimeException("ActionConfigFile: Empty forecast_lags list");
 		}
 
-		long min_time = 1000L;
+		long min_lag = 1000L;
 
 		for (int i = 0; i < n; ++i) {
-			long forecast_time = forecast_times.get(i);
-			if (!( forecast_time >= min_time && forecast_time % 1000L == 0L && forecast_time <= 1000000000000L )) {
-				throw new RuntimeException("ActionConfigFile: Invalid forecast_time: " + forecast_time + ", index = " + i);
+			long forecast_lag = forecast_lags.get(i);
+			if (!( forecast_lag >= min_lag && forecast_lag % 1000L == 0L && forecast_lag <= 1000000000000L )) {
+				throw new RuntimeException("ActionConfigFile: Invalid forecast_lag: " + forecast_lag + ", index = " + i);
 			}
-			min_time = forecast_time + forecast_min_gap;
+			min_lag = forecast_lag + forecast_min_gap;
 		}
 
 		if (!( forecast_max_delay > 0L )) {
@@ -126,15 +126,15 @@ public class ActionConfigFile {
 				throw new RuntimeException("ActionConfigFile: Invalid comcat_retry_min_gap: " + comcat_retry_min_gap);
 		}
 
-		n = comcat_retry_times.size();
-		min_time = 1000L;
+		n = comcat_retry_lags.size();
+		min_lag = 1000L;
 
 		for (int i = 0; i < n; ++i) {
-			long comcat_retry_time = comcat_retry_times.get(i);
-			if (!( comcat_retry_time >= min_time && comcat_retry_time % 1000L == 0L && comcat_retry_time <= 1000000000000L )) {
-				throw new RuntimeException("ActionConfigFile: Invalid comcat_retry_time: " + comcat_retry_time + ", index = " + i);
+			long comcat_retry_lag = comcat_retry_lags.get(i);
+			if (!( comcat_retry_lag >= min_lag && comcat_retry_lag % 1000L == 0L && comcat_retry_lag <= 1000000000000L )) {
+				throw new RuntimeException("ActionConfigFile: Invalid comcat_retry_lag: " + comcat_retry_lag + ", index = " + i);
 			}
-			min_time = comcat_retry_time + comcat_retry_min_gap;
+			min_lag = comcat_retry_lag + comcat_retry_min_gap;
 		}
 	
 		return;
@@ -147,19 +147,19 @@ public class ActionConfigFile {
 		StringBuilder result = new StringBuilder();
 		result.append ("ActionConfigFile:" + "\n");
 		result.append ("forecast_min_gap = " + Duration.ofMillis(forecast_min_gap).toString() + "\n");
-		result.append ("forecast_times = [" + "\n");
-		for (int i = 0; i < forecast_times.size(); ++i) {
-			long forecast_time = forecast_times.get(i);
-			result.append ("  " + i + ":  " + Duration.ofMillis(forecast_time).toString() + "\n");
+		result.append ("forecast_lags = [" + "\n");
+		for (int i = 0; i < forecast_lags.size(); ++i) {
+			long forecast_lag = forecast_lags.get(i);
+			result.append ("  " + i + ":  " + Duration.ofMillis(forecast_lag).toString() + "\n");
 		}
 		result.append ("]" + "\n");
 		result.append ("forecast_max_delay = " + Duration.ofMillis(forecast_max_delay).toString() + "\n");
 		result.append ("comcat_clock_skew = " + Duration.ofMillis(comcat_clock_skew).toString() + "\n");
 		result.append ("comcat_retry_min_gap = " + Duration.ofMillis(comcat_retry_min_gap).toString() + "\n");
-		result.append ("comcat_retry_times = [" + "\n");
-		for (int i = 0; i < comcat_retry_times.size(); ++i) {
-			long comcat_retry_time = comcat_retry_times.get(i);
-			result.append ("  " + i + ":  " + Duration.ofMillis(comcat_retry_time).toString() + "\n");
+		result.append ("comcat_retry_lags = [" + "\n");
+		for (int i = 0; i < comcat_retry_lags.size(); ++i) {
+			long comcat_retry_lag = comcat_retry_lags.get(i);
+			result.append ("  " + i + ":  " + Duration.ofMillis(comcat_retry_lag).toString() + "\n");
 		}
 		result.append ("]" + "\n");
 		return result.toString();
@@ -168,15 +168,15 @@ public class ActionConfigFile {
 
 	//----- Service functions -----
 
-	// Get the first element of forecast_times that is >= the supplied min_time.
-	// The return is -1 if the supplied min_time is greater than all elements.
+	// Get the first element of forecast_lags that is >= the supplied min_lag.
+	// The return is -1 if the supplied min_lag is greater than all elements.
 	// If a value is found, it is guaranteed to be a whole number of seconds, from 1 to 10^9 seconds.
 
-	public long get_next_forecast_time (long min_time) {
+	public long get_next_forecast_lag (long min_lag) {
 
 		// Binary search
 
-		int index = Collections.binarySearch (forecast_times, new Long(min_time));
+		int index = Collections.binarySearch (forecast_lags, new Long(min_lag));
 
 		// If not found, convert to index of next larger element
 
@@ -186,24 +186,24 @@ public class ActionConfigFile {
 
 		// If past end of list, then return -1
 
-		if (index >= forecast_times.size()) {
+		if (index >= forecast_lags.size()) {
 			return -1L;
 		}
 
-		// Return the time value from the list
+		// Return the lag value from the list
 
-		return forecast_times.get(index).longValue();
+		return forecast_lags.get(index).longValue();
 	}
 
-	// Get the first element of comcat_retry_times that is >= the supplied min_time.
-	// The return is -1 if the supplied min_time is greater than all elements.
+	// Get the first element of comcat_retry_lags that is >= the supplied min_lag.
+	// The return is -1 if the supplied min_lag is greater than all elements.
 	// If a value is found, it is guaranteed to be a whole number of seconds, from 1 to 10^9 seconds.
 
-	public long get_next_comcat_retry_time (long min_time) {
+	public long get_next_comcat_retry_lag (long min_lag) {
 
 		// Binary search
 
-		int index = Collections.binarySearch (comcat_retry_times, new Long(min_time));
+		int index = Collections.binarySearch (comcat_retry_lags, new Long(min_lag));
 
 		// If not found, convert to index of next larger element
 
@@ -213,13 +213,13 @@ public class ActionConfigFile {
 
 		// If past end of list, then return -1
 
-		if (index >= comcat_retry_times.size()) {
+		if (index >= comcat_retry_lags.size()) {
 			return -1L;
 		}
 
-		// Return the time value from the list
+		// Return the lag value from the list
 
-		return comcat_retry_times.get(index).longValue();
+		return comcat_retry_lags.get(index).longValue();
 	}
 
 
@@ -298,11 +298,11 @@ public class ActionConfigFile {
 		// Contents
 
 		marshal_duration      (writer, "forecast_min_gap"    , forecast_min_gap    );
-		marshal_duration_list (writer, "forecast_times"      , forecast_times      );
+		marshal_duration_list (writer, "forecast_lags"       , forecast_lags       );
 		marshal_duration      (writer, "forecast_max_delay"  , forecast_max_delay  );
 		marshal_duration      (writer, "comcat_clock_skew"   , comcat_clock_skew   );
 		marshal_duration      (writer, "comcat_retry_min_gap", comcat_retry_min_gap);
-		marshal_duration_list (writer, "comcat_retry_times"  , comcat_retry_times  );
+		marshal_duration_list (writer, "comcat_retry_lags"   , comcat_retry_lags   );
 	
 		return;
 	}
@@ -318,11 +318,11 @@ public class ActionConfigFile {
 		// Contents
 
 		forecast_min_gap     = unmarshal_duration      (reader, "forecast_min_gap"    );
-		forecast_times       = unmarshal_duration_list (reader, "forecast_times"      );
+		forecast_lags        = unmarshal_duration_list (reader, "forecast_lags"       );
 		forecast_max_delay   = unmarshal_duration      (reader, "forecast_max_delay"  );
 		comcat_clock_skew    = unmarshal_duration      (reader, "comcat_clock_skew"   );
 		comcat_retry_min_gap = unmarshal_duration      (reader, "comcat_retry_min_gap");
-		comcat_retry_times   = unmarshal_duration_list (reader, "comcat_retry_times"  );
+		comcat_retry_lags    = unmarshal_duration_list (reader, "comcat_retry_lags"   );
 
 		// Error check
 
