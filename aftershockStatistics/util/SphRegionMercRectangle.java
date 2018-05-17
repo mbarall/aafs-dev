@@ -214,7 +214,7 @@ public class SphRegionMercRectangle extends SphRegion {
 
 	@Override
 	protected int get_marshal_type () {
-		return MARSHAL_CIRCLE;
+		return MARSHAL_MERC_RECTANGLE;
 	}
 
 	// Marshal object, internal.
