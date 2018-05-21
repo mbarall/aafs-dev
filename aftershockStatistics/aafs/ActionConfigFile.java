@@ -32,6 +32,9 @@ import scratch.aftershockStatistics.OAFParameterSet;
  *	"comcat_origin_skew" = Assumed maximum change in mainshock origin time, in java.time.Duration format.
  *	"comcat_retry_min_gap" = String giving minimum allowed gap between ComCat retries, in java.time.Duration format.
  *  "seq_spec_min_lag" = String giving minimum time lag at which sequence-specific forecasts can be generated, in java.time.Duration format.
+ *  "advisory_dur_week" = String giving minimum time lag at which one-week advisories can be generated, in java.time.Duration format.
+ *  "advisory_dur_month" = String giving minimum time lag at which one-month advisories can be generated, in java.time.Duration format.
+ *  "advisory_dur_year" = String giving minimum time lag at which one-year advisories can be generated, in java.time.Duration format.
  *	"forecast_lags" = [ Array giving a list of time lags at which forecasts are generated, in increasing order.
  *		element = String giving time lag since mainshock, in java.time.Duration format.
  *	]
@@ -84,6 +87,21 @@ public class ActionConfigFile {
 
 	public long seq_spec_min_lag;
 
+	// Minimum time after an earthquake at which one-week advisories can be generated, in milliseconds.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long advisory_dur_week;
+
+	// Minimum time after an earthquake at which one-month advisories can be generated, in milliseconds.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long advisory_dur_month;
+
+	// Minimum time after an earthquake at which one-year advisories can be generated, in milliseconds.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long advisory_dur_year;
+
 	// Time lags at which forecasts are generated, in milliseconds.  Must be in increasing order.
 	// This is time lag since the mainshock.  Must have at least 1 element.
 	// The difference between successive elements must be at least the minimum gap.
@@ -134,6 +152,9 @@ public class ActionConfigFile {
 		comcat_origin_skew = 0L;
 		comcat_retry_min_gap = 0L;
 		seq_spec_min_lag = 0L;
+		advisory_dur_week = 0L;
+		advisory_dur_month = 0L;
+		advisory_dur_year = 0L;
 		forecast_lags = new ArrayList<Long>();
 		comcat_retry_lags = new ArrayList<Long>();
 		comcat_intake_lags = new ArrayList<Long>();
@@ -182,6 +203,18 @@ public class ActionConfigFile {
 
 		if (!( is_valid_lag(seq_spec_min_lag) )) {
 				throw new RuntimeException("ActionConfigFile: Invalid seq_spec_min_lag: " + seq_spec_min_lag);
+		}
+
+		if (!( is_valid_lag(advisory_dur_week) )) {
+				throw new RuntimeException("ActionConfigFile: Invalid advisory_dur_week: " + advisory_dur_week);
+		}
+
+		if (!( is_valid_lag(advisory_dur_month) )) {
+				throw new RuntimeException("ActionConfigFile: Invalid advisory_dur_month: " + advisory_dur_month);
+		}
+
+		if (!( is_valid_lag(advisory_dur_year) )) {
+				throw new RuntimeException("ActionConfigFile: Invalid advisory_dur_year: " + advisory_dur_year);
 		}
 
 		int n = forecast_lags.size();
@@ -248,6 +281,9 @@ public class ActionConfigFile {
 		result.append ("comcat_origin_skew = " + Duration.ofMillis(comcat_origin_skew).toString() + "\n");
 		result.append ("comcat_retry_min_gap = " + Duration.ofMillis(comcat_retry_min_gap).toString() + "\n");
 		result.append ("seq_spec_min_lag = " + Duration.ofMillis(seq_spec_min_lag).toString() + "\n");
+		result.append ("advisory_dur_week = " + Duration.ofMillis(advisory_dur_week).toString() + "\n");
+		result.append ("advisory_dur_month = " + Duration.ofMillis(advisory_dur_month).toString() + "\n");
+		result.append ("advisory_dur_year = " + Duration.ofMillis(advisory_dur_year).toString() + "\n");
 
 		result.append ("forecast_lags = [" + "\n");
 		for (int i = 0; i < forecast_lags.size(); ++i) {
@@ -617,6 +653,9 @@ public class ActionConfigFile {
 		marshal_duration           (writer, "comcat_origin_skew"   , comcat_origin_skew   );
 		marshal_duration           (writer, "comcat_retry_min_gap" , comcat_retry_min_gap );
 		marshal_duration           (writer, "seq_spec_min_lag"     , seq_spec_min_lag     );
+		marshal_duration           (writer, "advisory_dur_week"    , advisory_dur_week    );
+		marshal_duration           (writer, "advisory_dur_month"   , advisory_dur_month   );
+		marshal_duration           (writer, "advisory_dur_year"    , advisory_dur_year    );
 		marshal_duration_list      (writer, "forecast_lags"        , forecast_lags        );
 		marshal_duration_list      (writer, "comcat_retry_lags"    , comcat_retry_lags    );
 		marshal_duration_list      (writer, "comcat_intake_lags"   , comcat_intake_lags   );
@@ -642,6 +681,9 @@ public class ActionConfigFile {
 		comcat_origin_skew    = unmarshal_duration           (reader, "comcat_origin_skew"   );
 		comcat_retry_min_gap  = unmarshal_duration           (reader, "comcat_retry_min_gap" );
 		seq_spec_min_lag      = unmarshal_duration           (reader, "seq_spec_min_lag"     );
+		advisory_dur_week     = unmarshal_duration           (reader, "advisory_dur_week"    );
+		advisory_dur_month    = unmarshal_duration           (reader, "advisory_dur_month"   );
+		advisory_dur_year     = unmarshal_duration           (reader, "advisory_dur_year"    );
 		forecast_lags         = unmarshal_duration_list      (reader, "forecast_lags"        );
 		comcat_retry_lags     = unmarshal_duration_list      (reader, "comcat_retry_lags"    );
 		comcat_intake_lags    = unmarshal_duration_list      (reader, "comcat_intake_lags"   );

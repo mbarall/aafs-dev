@@ -9,6 +9,8 @@ import scratch.aftershockStatistics.aafs.entity.LogEntry;
 import scratch.aftershockStatistics.aafs.entity.CatalogSnapshot;
 import scratch.aftershockStatistics.aafs.entity.TimelineEntry;
 
+import scratch.aftershockStatistics.CompactEqkRupList;
+
 
 /**
  * Status entry in the event timeline.
@@ -55,7 +57,7 @@ public class TimelineStatus extends DBPayload {
 	public static final int ACTCODE_TRACK               = 1;
 		// This is the first entry in the timeline, when event tracking begins.
 		// The cause is recorded in fc_origin below.  It may also contain analsyt
-		// parameter values.
+		// parameter values.  Only the first timeline entry can be ACTCODE_TRACK.
 	public static final int ACTCODE_FORECAST            = 2;
 		// The entry contains a forecast.
 	public static final int ACTCODE_ANALYST             = 3;
@@ -76,7 +78,14 @@ public class TimelineStatus extends DBPayload {
 	public static final int ACTCODE_FORESHOCK           = 8;
 		// The entry is the last timeline entry because the automatic system
 		// has determined it is a foreshock.
-	public static final int ACTCODE_MAX                 = 8;
+	public static final int ACTCODE_EXPIRED             = 9;
+		// The entry is the last timeline entry because the automatic system
+		// has determined it is expired. Note that an expired action may not
+		// appear if expired status was set on the final forecast action.
+	public static final int ACTCODE_STATUS_UPDATE       = 10;
+		// The entry contains an update to forecast status.  This is recorded
+		// in fc_status below.  There may also be a change to pdl_status.
+	public static final int ACTCODE_MAX                 = 10;
 
 	// Return a string describing the actcode.
 
@@ -90,6 +99,8 @@ public class TimelineStatus extends DBPayload {
 		case ACTCODE_WITHDRAWN: return "ACTCODE_WITHDRAWN";
 		case ACTCODE_COMCAT_FAIL: return "ACTCODE_COMCAT_FAIL";
 		case ACTCODE_FORESHOCK: return "ACTCODE_FORESHOCK";
+		case ACTCODE_EXPIRED: return "ACTCODE_EXPIRED";
+		case ACTCODE_STATUS_UPDATE: return "ACTCODE_STATUS_UPDATE";
 		}
 		return "ACTCODE_INVALID(" + actcode + ")";
 	}
@@ -331,7 +342,7 @@ public class TimelineStatus extends DBPayload {
 
 
 
-	//----- Service functions -----
+	//----- Service functions: Query -----
 
 	// Return true if this timeline is in a state that requires a future forecast.
 
@@ -370,6 +381,61 @@ public class TimelineStatus extends DBPayload {
 		return false;
 	}
 
+	// Return true if there should be an associated catalog snapshot.
+
+	public boolean has_catalog_snapshot () {
+		switch (actcode) {
+		case ACTCODE_FORECAST:
+			if (forecast_results.catalog_result_avail) {
+				return true;
+			}
+			break;
+		}
+		return false;
+	}
+
+	// Get the associated catalog snapshot, or null if none.
+	// Note: The catalog is not marshaled, so this will onl obtain the catalog
+	// when the forecast is first generated.
+
+	public CompactEqkRupList get_catalog_snapshot () {
+		switch (actcode) {
+		case ACTCODE_FORECAST:
+			if (forecast_results.catalog_result_avail) {
+				return forecast_results.catalog_aftershocks;
+			}
+			break;
+		}
+		return null;
+	}
+
+	// Return true if this is the first timeline entry.
+
+	public boolean is_first_entry () {
+		switch (actcode) {
+		case ACTCODE_TRACK:
+			return true;
+		}
+		return false;
+	}
+
+	// Return true if this timeline is in a state that can be converted to the
+	// normal active state by changing fc_status.
+
+	public boolean is_convertible_to_normal () {
+		switch (fc_status) {
+		case FCSTAT_ACTIVE_INTAKE:
+		case FCSTAT_STOP_WITHDRAWN:
+			return true;
+		}
+		return false;
+	}
+
+
+
+
+	//----- Service functions: Insertion -----
+
 	// Set the fc_status variable.
 
 	public void set_fc_status (int the_fc_status) {
@@ -383,6 +449,33 @@ public class TimelineStatus extends DBPayload {
 		pdl_status = the_pdl_status;
 		return;
 	}
+
+	// Set the analyst data variables.
+	// If the analyst data contains a mainshock time, save it too.
+
+	public void set_analyst_data (String the_analyst_id, String the_analyst_remark,
+		long the_analyst_time, ForecastParameters the_analyst_params, long the_extra_forecast_lag) {
+		
+		analyst_id = the_analyst_id;
+		analyst_remark = the_analyst_remark;
+		analyst_time = the_analyst_time;
+		analyst_params = the_analyst_params;
+		extra_forecast_lag = the_extra_forecast_lag;
+
+		if (the_analyst_params != null) {
+			if (the_analyst_params.mainshock_fetch_meth == ForecastParameters.FETCH_METH_ANALYST
+					&& the_analyst_params.mainshock_avail) {
+				last_mainshock_time = the_analyst_params.mainshock_time;
+			}
+		}
+
+		return;
+	}
+
+
+
+
+	//----- Service functions: State setting -----
 
 	// Set the state to error.
 
@@ -497,6 +590,10 @@ public class TimelineStatus extends DBPayload {
 	}
 
 	// Set the state to forecast.
+	//
+	// Note: fc_status is set to FCSTAT_ACTIVE_NORMAL.  The caller can change fc_status
+	// to FCSTAT_STOP_EXPIRED if there are no further forecasts scheduled.
+	//
 	// Note: pdl_status is set to either PDLSTAT_NONE or PDLSTAT_PENDING depending on the
 	// return value of the_forecast_results.get_pdl_model().  The caller should call
 	// the_forecast_results.pick_pdl_model() (or set the xxxx_pdl flags in some other way)
@@ -507,8 +604,8 @@ public class TimelineStatus extends DBPayload {
 	public void set_state_forecast (long the_entry_time, ActionConfig action_config,
 			ForecastParameters the_forecast_params, ForecastResults the_forecast_results) {
 
-		long min_lag = the_forecast_params.forecast_lag + action_config.get_forecast_min_gap();
-		long next_forecast_lag = action_config.get_next_forecast_lag (min_lag);
+		//long min_lag = the_forecast_params.forecast_lag + action_config.get_forecast_min_gap();
+		//long next_forecast_lag = action_config.get_next_forecast_lag (min_lag);
 		long forecast_time = the_forecast_params.forecast_lag + the_forecast_params.mainshock_time;
 		String pdl_json = the_forecast_results.get_pdl_model();
 
@@ -518,7 +615,8 @@ public class TimelineStatus extends DBPayload {
 
 		entry_time          = the_entry_time;
 		//fc_origin           = kept;
-		fc_status           = ((next_forecast_lag >= 0L) ? FCSTAT_ACTIVE_NORMAL : FCSTAT_STOP_EXPIRED);
+		//fc_status           = ((next_forecast_lag >= 0L) ? FCSTAT_ACTIVE_NORMAL : FCSTAT_STOP_EXPIRED);
+		fc_status           = FCSTAT_ACTIVE_NORMAL;
 		pdl_status          = ((pdl_json == null) ? PDLSTAT_NONE : PDLSTAT_PENDING);
 		//foreshock_event_id  = kept;
 
@@ -532,6 +630,166 @@ public class TimelineStatus extends DBPayload {
 
 		last_mainshock_time = the_forecast_params.mainshock_time;
 		last_forecast_lag   = the_forecast_params.forecast_lag;
+		extra_forecast_lag  = -1L;
+		return;
+	}
+
+	// Set the state to PDL update.
+	//
+	// Note: This keeps the forecast parameters and results, so that it is possible
+	// to send a PDL report for a forecast which originally didn't send a report.
+
+	public void set_state_pdl_update (long the_entry_time, int the_pdl_status) {
+
+		//event_id            = kept;
+		actcode             = ACTCODE_PDL_UPDATE;
+		action_time         = action_time + 1L;
+
+		entry_time          = the_entry_time;
+		//fc_origin           = kept;
+		//fc_status           = kpet;
+		pdl_status          = the_pdl_status;
+		//foreshock_event_id  = kept;
+
+		//analyst_id          = kept;
+		//analyst_remark      = kept;
+		//analyst_time        = kept;
+		//analyst_params      = kept;
+
+		//forecast_params     = kept;
+		//forecast_results    = kept;
+
+		//last_mainshock_time = kept;
+		//last_forecast_lag   = kept;
+		//extra_forecast_lag  = kept;
+		return;
+	}
+
+	// Set the state to expired.
+
+	public void set_state_expired (long the_entry_time) {
+
+		//event_id            = kept;
+		actcode             = ACTCODE_EXPIRED;
+		action_time         = action_time + 1L;
+
+		entry_time          = the_entry_time;
+		//fc_origin           = kept;
+		if (fc_status == FCSTAT_ACTIVE_NORMAL || fc_status == FCSTAT_ACTIVE_INTAKE) {
+			fc_status           = FCSTAT_STOP_EXPIRED;
+		}
+		if (pdl_status == PDLSTAT_PENDING) {
+			pdl_status          = PDLSTAT_NONE;
+		}
+		//foreshock_event_id  = kept;
+
+		//analyst_id          = kept;
+		//analyst_remark      = kept;
+		//analyst_time        = kept;
+		//analyst_params      = kept;
+
+		forecast_params     = null;
+		forecast_results    = null;
+
+		//last_mainshock_time = kept;
+		//last_forecast_lag   = kept;
+		//extra_forecast_lag  = kept;
+		return;
+	}
+
+	// Set the state to status update.
+	//
+	// Note: Sets pdl_status to PDLSTAT_NONE.
+
+	public void set_state_status_update (long the_entry_time, int the_fc_status) {
+
+		//event_id            = kept;
+		actcode             = ACTCODE_STATUS_UPDATE;
+		action_time         = action_time + 1L;
+
+		entry_time          = the_entry_time;
+		//fc_origin           = kept;
+		fc_status           = the_fc_status;
+		pdl_status          = PDLSTAT_NONE;
+		//foreshock_event_id  = kept;
+
+		//analyst_id          = kept;
+		//analyst_remark      = kept;
+		//analyst_time        = kept;
+		//analyst_params      = kept;
+
+		forecast_params     = null;
+		forecast_results    = null;
+
+		//last_mainshock_time = kept;
+		//last_forecast_lag   = kept;
+		//extra_forecast_lag  = kept;
+		return;
+	}
+
+	// Set the state to analyst intervention.
+	//
+	// Note: Sets pdl_status to PDLSTAT_NONE.
+	//
+	// Note: The caller may use set_fc_status(), set_pdl_status(), and set_analyst_data()
+	// to make changes to forecast status, PDL status, and analyst data.
+
+	public void set_state_analyst_intervention (long the_entry_time) {
+
+		//event_id            = kept;
+		actcode             = ACTCODE_ANALYST;
+		action_time         = action_time + 1L;
+
+		entry_time          = the_entry_time;
+		//fc_origin           = kept;
+		//fc_status           = kept;
+		pdl_status          = PDLSTAT_NONE;
+		//foreshock_event_id  = kept;
+
+		//analyst_id          = kept;
+		//analyst_remark      = kept;
+		//analyst_time        = kept;
+		//analyst_params      = kept;
+
+		forecast_params     = null;
+		forecast_results    = null;
+
+		//last_mainshock_time = kept;
+		//last_forecast_lag   = kept;
+		//extra_forecast_lag  = kept;
+		return;
+	}
+
+	// Set the state to track.
+	//
+	// Note: Sets pdl_status to PDLSTAT_NONE.
+	//
+	// Note: The caller may use set_fc_status(), set_pdl_status(), and set_analyst_data()
+	// to make changes to forecast status, PDL status, and analyst data.
+
+	public void set_state_track (long the_entry_time, ActionConfig action_config,
+			String the_event_id, long the_last_mainshock_time, int the_fc_origin, int the_fc_status) {
+
+		event_id            = the_event_id;
+		actcode             = ACTCODE_TRACK;
+		action_time         = action_config.floor_unit_lag (the_last_mainshock_time);
+
+		entry_time          = the_entry_time;
+		fc_origin           = the_fc_origin;
+		fc_status           = the_fc_status;
+		pdl_status          = PDLSTAT_NONE;
+		foreshock_event_id  = "";
+
+		analyst_id          = "";
+		analyst_remark      = "";
+		analyst_time        = 0L;
+		analyst_params      = null;
+
+		forecast_params     = null;
+		forecast_results    = null;
+
+		last_mainshock_time = the_last_mainshock_time;
+		last_forecast_lag   = -1L;
 		extra_forecast_lag  = -1L;
 		return;
 	}

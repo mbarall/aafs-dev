@@ -18,6 +18,10 @@ public class OpGenerateForecast extends DBPayload {
 
 	//----- Constants and variables -----
 
+	// Time stamp for the timeline entry when this was issued, in milliseconds since the epoch.
+
+	public long action_time;
+
 	// Time lag at which the last forecast occured, in milliseconds since the mainshock.
 	// The value is -1L if there have been no prior forecasts.
 
@@ -40,7 +44,8 @@ public class OpGenerateForecast extends DBPayload {
 
 	// Set up the contents.
 
-	public void setup (long the_last_forecast_lag, long the_next_forecast_lag) {
+	public void setup (long the_action_time, long the_last_forecast_lag, long the_next_forecast_lag) {
+		action_time = the_action_time;
 		last_forecast_lag = the_last_forecast_lag;
 		next_forecast_lag = the_next_forecast_lag;
 		return;
@@ -72,6 +77,7 @@ public class OpGenerateForecast extends DBPayload {
 
 		// Contents
 
+		writer.marshalLong ("action_time"      , action_time      );
 		writer.marshalLong ("last_forecast_lag", last_forecast_lag);
 		writer.marshalLong ("next_forecast_lag", next_forecast_lag);
 
@@ -93,6 +99,7 @@ public class OpGenerateForecast extends DBPayload {
 
 		// Contents
 
+		action_time       = reader.unmarshalLong ("action_time"      );
 		last_forecast_lag = reader.unmarshalLong ("last_forecast_lag");
 		next_forecast_lag = reader.unmarshalLong ("next_forecast_lag");
 

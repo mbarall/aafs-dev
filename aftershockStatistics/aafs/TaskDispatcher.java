@@ -5,6 +5,11 @@ import java.util.List;
 import java.io.StringWriter;
 import java.io.PrintWriter;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.TimeZone;
+
 import scratch.aftershockStatistics.aafs.entity.PendingTask;
 import scratch.aftershockStatistics.aafs.entity.LogEntry;
 import scratch.aftershockStatistics.aafs.entity.CatalogSnapshot;
@@ -13,6 +18,9 @@ import scratch.aftershockStatistics.aafs.entity.TimelineEntry;
 import scratch.aftershockStatistics.util.MarshalImpArray;
 import scratch.aftershockStatistics.util.MarshalReader;
 import scratch.aftershockStatistics.util.MarshalWriter;
+
+import scratch.aftershockStatistics.CompactEqkRupList;
+
 
 /**
  * Task dispatcher for AAFS server.
@@ -154,6 +162,10 @@ public class TaskDispatcher implements Runnable {
 
 	private long restart_delay_max = 300000L;		// 5 minutes
 
+	// True to enable messages at beginning and end of each task.
+
+	private boolean dispatcher_verbose = true;
+
 
 
 
@@ -166,7 +178,10 @@ public class TaskDispatcher implements Runnable {
 	public static final int OPCODE_GEN_FORECAST = 4;		// Generate forecast
 	public static final int OPCODE_GEN_PDL_REPORT = 5;		// Generate delayed forecast report to PDL
 	public static final int OPCODE_GEN_EXPIRE = 6;			// Stop generation, mark the timeline expired
-	public static final int OPCODE_MAX = 6;					// Maximum allowed opcode
+	public static final int OPCODE_INTAKE_SYNC = 7;			// Intake an event, from sync
+	public static final int OPCODE_INTAKE_PDL = 8;			// Intake an event, from PDL
+	public static final int OPCODE_ANALYST_INTERVENE = 9;	// Analyst intervention
+	public static final int OPCODE_MAX = 9;					// Maximum allowed opcode
 
 	// Return a string describing an opcode.
 
@@ -178,6 +193,9 @@ public class TaskDispatcher implements Runnable {
 		case OPCODE_GEN_FORECAST: return "OPCODE_GEN_FORECAST";
 		case OPCODE_GEN_PDL_REPORT: return "OPCODE_GEN_PDL_REPORT";
 		case OPCODE_GEN_EXPIRE: return "OPCODE_GEN_EXPIRE";
+		case OPCODE_INTAKE_SYNC: return "OPCODE_INTAKE_SYNC";
+		case OPCODE_INTAKE_PDL: return "OPCODE_INTAKE_PDL";
+		case OPCODE_ANALYST_INTERVENE: return "OPCODE_ANALYST_INTERVENE";
 		}
 		return "OPCODE_INVALID(" + x + ")";
 	}
@@ -187,9 +205,11 @@ public class TaskDispatcher implements Runnable {
 
 	// Special execution times.
 
-	public static final long EXEC_TIME_ACTIVE = 0L;			// Task is active
-	public static final long EXEC_TIME_MIN_WAITING = 1L;	// Minimum execution time for waiting tasks
-	public static final long EXEC_TIME_SHUTDOWN = 2L;		// Execution time for shutdown task
+	public static final long EXEC_TIME_ACTIVE = 0L;						// Task is active
+	public static final long EXEC_TIME_MIN_WAITING = 1L;				// Minimum execution time for waiting tasks
+	public static final long EXEC_TIME_MIN_PROMPT = 10000000L;			// Minimum execution time for prompt tasks, 10^7 ~ 2.8 hours
+	public static final long EXEC_TIME_MAX_PROMPT = 19000000L;			// Maximum execution time for prompt tasks
+	public static final long EXEC_TIME_SHUTDOWN = 20000000L;			// Execution time for shutdown task, 2*10^7 ~ 5.6 hours
 	public static final long EXEC_TIME_FAR_FUTURE = 1000000000000000L;	// 10^15 ~ 30,000 years
 
 
@@ -198,16 +218,22 @@ public class TaskDispatcher implements Runnable {
 	// Result codes.
 
 	public static final int RESCODE_MIN = 1;					// Minimum known result code
-	public static final int RESCODE_SUCCESS = 1;				// Task completes successfully
+	public static final int RESCODE_SUCCESS = 1;				// Task completed successfully
 	public static final int RESCODE_TASK_CORRUPT = 2;			// Task entry or payload was corrupted, task discarded
 	public static final int RESCODE_TIMELINE_CORRUPT = 3;		// Timeline entry or payload was corrupted, task discarded
 	public static final int RESCODE_TIMELINE_NOT_FOUND = 4;		// Timeline entry not found, task discarded
 	public static final int RESCODE_TIMELINE_NOT_ACTIVE = 5;	// Timeline entry not active, task discarded
-	public static final int RESCODE_TIMELINE_LAG_MISMATCH = 6;	// Timeline entry has lag values that do not match the forecast task
+	public static final int RESCODE_TIMELINE_TASK_MISMATCH = 6;	// Timeline entry has lag values that do not match the forecast task
 	public static final int RESCODE_TIMELINE_COMCAT_FAIL = 7;	// Timeline stopped due to ComCat failure
 	public static final int RESCODE_TIMELINE_WITHDRAW = 8;		// Timeline stopped due to withdrawal of event at first forecast
 	public static final int RESCODE_TIMELINE_FORESHOCK = 9;		// Timeline stopped because event was found to be a foreshock
-	public static final int RESCODE_MAX = 9;					// Maximum known result code
+	public static final int RESCODE_TIMELINE_NOT_PDL_PEND = 10;	// Timeline entry does not have a PDL report pending, task discarded
+	public static final int RESCODE_TIMELINE_PDL_FAIL = 11;		// Timeline attempt to send PDL report failed, sending abandoned
+	public static final int RESCODE_TIMELINE_EXISTS = 12;		// Timeline already exists, task discarded
+	public static final int RESCODE_TASK_RETRY_SUCCESS = 13;	// Task completed on task dispatcher retry
+	public static final int RESCODE_TIMELINE_STATE_UPDATE = 14;	// Timeline state was updated
+	public static final int RESCODE_INTAKE_COMCAT_FAIL = 15;	// Event intake failed due to ComCat failure
+	public static final int RESCODE_MAX = 15;					// Maximum known result code
 
 	public static final int RESCODE_DELETE = -1;				// Special result code: delete current task (without logging it)
 	public static final int RESCODE_STAGE = -2;					// Special result code: stage current task (execute it again)
@@ -221,10 +247,16 @@ public class TaskDispatcher implements Runnable {
 		case RESCODE_TIMELINE_CORRUPT: return "RESCODE_TIMELINE_CORRUPT";
 		case RESCODE_TIMELINE_NOT_FOUND: return "RESCODE_TIMELINE_NOT_FOUND";
 		case RESCODE_TIMELINE_NOT_ACTIVE: return "RESCODE_TIMELINE_NOT_ACTIVE";
-		case RESCODE_TIMELINE_LAG_MISMATCH: return "RESCODE_TIMELINE_LAG_MISMATCH";
+		case RESCODE_TIMELINE_TASK_MISMATCH: return "RESCODE_TIMELINE_TASK_MISMATCH";
 		case RESCODE_TIMELINE_COMCAT_FAIL: return "RESCODE_TIMELINE_COMCAT_FAIL";
 		case RESCODE_TIMELINE_WITHDRAW: return "RESCODE_TIMELINE_WITHDRAW";
 		case RESCODE_TIMELINE_FORESHOCK: return "RESCODE_TIMELINE_FORESHOCK";
+		case RESCODE_TIMELINE_NOT_PDL_PEND: return "RESCODE_TIMELINE_NOT_PDL_PEND";
+		case RESCODE_TIMELINE_PDL_FAIL: return "RESCODE_TIMELINE_PDL_FAIL";
+		case RESCODE_TIMELINE_EXISTS: return "RESCODE_TIMELINE_EXISTS";
+		case RESCODE_TASK_RETRY_SUCCESS: return "RESCODE_TASK_RETRY_SUCCESS";
+		case RESCODE_TIMELINE_STATE_UPDATE: return "RESCODE_TIMELINE_STATE_UPDATE";
+		case RESCODE_INTAKE_COMCAT_FAIL: return "RESCODE_INTAKE_COMCAT_FAIL";
 
 		case RESCODE_DELETE: return "RESCODE_DELETE";
 		case RESCODE_STAGE: return "RESCODE_STAGE";
@@ -618,6 +650,28 @@ public class TaskDispatcher implements Runnable {
 		taskres_log_time = dispatcher_time;
 		taskres_log_remark = "";
 
+		// Say hello
+
+		if (dispatcher_verbose) {
+
+			if (task.is_restarted()) {
+
+				display_taskinfo ("TASK-RESTART: " + time_to_string (dispatcher_time) + "\n"
+					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
+					+ "event_id = " + task.get_event_id() + "\n"
+					+ "stage = " + task.get_stage());
+
+			} else {
+
+				display_taskinfo ("TASK-BEGIN: " + time_to_string (dispatcher_time) + "\n"
+					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
+					+ "event_id = " + task.get_event_id() + "\n"
+					+ "stage = " + task.get_stage());
+
+			}
+
+		}
+
 		// Invoke the execution function, depending on the opcode
 
 		int rescode;
@@ -634,6 +688,12 @@ public class TaskDispatcher implements Runnable {
 
 		case OPCODE_GEN_FORECAST: rescode = exec_gen_forecast (task); break;
 
+		case OPCODE_GEN_PDL_REPORT: rescode = exec_gen_pdl_report (task); break;
+
+		case OPCODE_GEN_EXPIRE: rescode = exec_gen_expire (task); break;
+
+		case OPCODE_INTAKE_SYNC: rescode = exec_intake_sync (task); break;
+
 		}
 
 		// Handle task disposition, depending on the result code
@@ -641,6 +701,14 @@ public class TaskDispatcher implements Runnable {
 		switch (rescode) {
 
 		default:
+
+			// Display message
+
+			if (dispatcher_verbose) {
+				display_taskinfo ("TASK-END:\n"
+					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
+					+ "rescode = " + get_rescode_as_string (rescode));
+			}
 
 			// Log the task
 
@@ -654,6 +722,13 @@ public class TaskDispatcher implements Runnable {
 
 		case RESCODE_DELETE:
 
+			// Display message
+
+			if (dispatcher_verbose) {
+				display_taskinfo ("TASK-DELETE:\n"
+					+ "opcode = " + get_opcode_as_string (task.get_opcode()));
+			}
+
 			// Remove the task from the queue
 
 			PendingTask.delete_task (task);
@@ -661,6 +736,15 @@ public class TaskDispatcher implements Runnable {
 			break;
 
 		case RESCODE_STAGE:
+
+			// Display message
+
+			if (dispatcher_verbose) {
+				display_taskinfo ("TASK-END:\n"
+					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
+					+ "taskres_exec_time = " + time_to_string (taskres_exec_time) + "\n"
+					+ "taskres_stage = " + taskres_stage);
+			}
 
 			// Stage the task, so it will execute again
 
@@ -789,6 +873,43 @@ public class TaskDispatcher implements Runnable {
 
 
 
+	// Get the next prompt execution time to use.
+	// Note: This is intended for tasks that execute reasonably quickly, without
+	// contacting external services such as ComCat.  These tasks have priority over
+	// shutdown, and execute last-in-first-out (although execution order should not
+	// be considered guaranteed).
+
+	public long get_prompt_exec_time () {
+
+		// Get the next-up prompt task
+
+		PendingTask prompt_task = PendingTask.get_first_task_entry (EXEC_TIME_MIN_PROMPT, EXEC_TIME_MAX_PROMPT, null);
+
+		// If none, use the largest value
+
+		if (prompt_task == null) {
+			return EXEC_TIME_MAX_PROMPT;
+		}
+
+		// Otherwise, return one less that the next-up task
+
+		return Math.max (EXEC_TIME_MIN_PROMPT, prompt_task.get_exec_time() - 1L);
+	}
+
+
+
+
+	// Convert a time (in milliseconds after the epoch) to a human-readable string.
+
+	public String time_to_string (long the_time) {
+		SimpleDateFormat fmt = new SimpleDateFormat ("yyyy-MM-dd HH:mm:ss z");
+		fmt.setTimeZone (TimeZone.getTimeZone ("UTC"));
+		return fmt.format (new Date (the_time));
+	}
+
+
+
+
 	//----- Task execution subroutines : Timeline operations -----
 
 
@@ -819,6 +940,218 @@ public class TaskDispatcher implements Runnable {
 
 
 
+	// Get the most recent entry on the timeline, and extract its status structure.
+	// If the task is restarted, this routine either completes the task or rolls back
+	// the timeline state so the task can start over.
+	// Return values are:
+	//  RESCODE_TIMELINE_EXISTS = The timeline exists, and its state is in tstatus.
+	//                            If restarted, anything that was previously done is undone.
+	//  RESCODE_TIMELINE_NOT_FOUND = The timeline does not exist, and tstatus is indeterminate.
+	//                               If restarted, anything that was previously done is undone.
+	//  RESCODE_TASK_RETRY_SUCCESS = The task was restarted, and has now been completed successfully.
+	//  RESCODE_TIMELINE_CORRUPT, RESCODE_TASK_CORRUPT (or anything else) = Error, operation cannot proceed.
+
+	public int open_timeline (PendingTask task, TimelineStatus tstatus, DBPayload payload) {
+
+		TimelineEntry tentry = null;
+		CatalogSnapshot catsnap = null;
+
+		// Get the payload
+
+		try {
+			payload.unmarshal_task (task);
+		}
+
+		// Invalid task
+
+		catch (Exception e) {
+
+			// If this task is a delayed timeline operation ...
+
+			switch (task.get_opcode()) {
+			case OPCODE_GEN_FORECAST:
+			case OPCODE_GEN_PDL_REPORT:
+			case OPCODE_GEN_EXPIRE:
+
+				// Get the most recent timeline entry for this event
+
+				tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id());
+
+				if (tentry != null) {
+
+					// Get the status for this timeline entry
+
+					try {
+						tstatus.unmarshal_timeline (tentry);
+					}
+
+					// Invalid timeline entry
+
+					catch (Exception e2) {
+
+						// Display the error and log the task
+
+						display_timeline_corrupt (tentry, task, e2);
+						return RESCODE_TIMELINE_CORRUPT;
+					}
+
+					// Issue any new delayed command that is needed to replace the failed one
+
+					next_auto_timeline (tstatus);
+				}
+				break;
+			}
+
+			// Display the error and log the task
+
+			display_invalid_task (task, e);
+			return RESCODE_TASK_CORRUPT;
+		}
+
+		// If task is restarting ...
+
+		if (task.is_restarted()) {
+
+			// If a timeline entry was written for this task, get it
+
+			tentry = TimelineEntry.get_timeline_entry_for_key (task.get_record_key());
+
+			// If a catalog snapshot was written for this task, get it
+
+			catsnap = CatalogSnapshot.get_catalog_shapshot_for_key (task.get_record_key());
+
+			// If we got a timeline entry ...
+
+			if (tentry != null) {
+
+				// Get the status for this timeline entry
+
+				try {
+					tstatus.unmarshal_timeline (tentry);
+				}
+
+				// Invalid timeline entry
+
+				catch (Exception e) {
+
+					// Display the error and log the task
+
+					display_timeline_corrupt (tentry, task, e);
+					return RESCODE_TIMELINE_CORRUPT;
+				}
+
+				// If we have any required catalog snapshot, then we can complete the task ...
+
+				if ( (!(tstatus.has_catalog_snapshot())) || catsnap != null ) {
+
+					//--- Complete the pending task
+				
+					// Remove any delayed commands
+
+					delete_delayed_timeline_tasks (tstatus.event_id);
+
+					// Issue any new delayed command that is needed
+
+					next_auto_timeline (tstatus);
+
+					// Task is now completed
+
+					return RESCODE_TASK_RETRY_SUCCESS;
+				}
+
+				// Unwind the task, by deleting the timeline entry
+
+				TimelineEntry.delete_timeline_entry (tentry);
+			}
+
+			//--- Undo the pending task, so it can start over from the beginning
+
+			// Delete the catalog entry if we have it
+
+			if (catsnap != null) {
+				CatalogSnapshot.delete_catalog_snapshot (catsnap);
+			}
+				
+			// Remove any delayed commands
+
+			delete_delayed_timeline_tasks (tstatus.event_id);
+
+			// Get the most recent timeline entry for this event
+
+			tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id());
+
+			if (tentry == null) {
+				return RESCODE_TIMELINE_NOT_FOUND;
+			}
+
+			// Get the status for this timeline entry
+
+			try {
+				tstatus.unmarshal_timeline (tentry);
+			}
+
+			// Invalid timeline entry
+
+			catch (Exception e) {
+
+				// Display the error and log the task
+
+				display_timeline_corrupt (tentry, task, e);
+				return RESCODE_TIMELINE_CORRUPT;
+			}
+
+			// If the current task is not a delayed task, re-issue any delayed task for the current timeline entry
+
+			switch (task.get_opcode()) {
+			case OPCODE_GEN_FORECAST:
+			case OPCODE_GEN_PDL_REPORT:
+			case OPCODE_GEN_EXPIRE:
+				break;
+
+			default:
+				next_auto_timeline (tstatus);
+				break;
+			}
+
+			// Found timeline entry
+
+			return RESCODE_TIMELINE_EXISTS;
+		}
+
+		//--- Prepare for the pending task
+
+		// Get the most recent timeline entry for this event
+
+		tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id());
+
+		if (tentry == null) {
+			return RESCODE_TIMELINE_NOT_FOUND;
+		}
+
+		// Get the status for this timeline entry
+
+		try {
+			tstatus.unmarshal_timeline (tentry);
+		}
+
+		// Invalid timeline entry
+
+		catch (Exception e) {
+
+			// Display the error and log the task
+
+			display_timeline_corrupt (tentry, task, e);
+			return RESCODE_TIMELINE_CORRUPT;
+		}
+
+		// Found timeline entry
+
+		return RESCODE_TIMELINE_EXISTS;
+	}
+
+
+
+
 	// Display an exception caused by a corrupt timeline entry, and set the log remark.
 	// Also, if the timeline entry is not an error entry, then write an error entry.
 
@@ -835,6 +1168,13 @@ public class TaskDispatcher implements Runnable {
 		// If the timeline entry is not marked as error, then add a new timeline entry
 
 		if (tentry.get_actcode() != TimelineStatus.ACTCODE_ERROR) {
+
+			// Delete any pending delayed tasks
+
+			delete_delayed_timeline_tasks (tentry.get_event_id());
+
+			// Write an error entry into the timeline
+
 			TimelineEntry.submit_timeline_entry (
 				task.get_record_key(),										// key
 				Math.max(dispatcher_time, tentry.get_action_time() + 1L),	// action_time
@@ -849,10 +1189,10 @@ public class TaskDispatcher implements Runnable {
 
 
 
-	// Display an exception caused by a ComCat failure, and set the log remark.
-	// Also, the timeline entry is set to the ComCat fail state, and written to the database.
+	// Process an exception caused by a ComCat failure.
+	// Display a message, set the log remark, set the timeline to ComCat fail state, and write the timeline entry.
 
-	public void display_timeline_comcat_fail (PendingTask task, TimelineStatus tstatus, Exception e) {
+	public void process_timeline_comcat_fail (PendingTask task, TimelineStatus tstatus, Exception e) {
 
 		// Display messages
 		
@@ -875,8 +1215,57 @@ public class TaskDispatcher implements Runnable {
 
 	// Append an entry to the timeline.
 	// The entry is tagged with the key from the current task.
+	// Also write a catalog snapshot to the database if necessary.
+	// Also issue the next delayed command for the timeline, if necessary.
+	// Parameters:
+	//  task = Current task.
+	//  tstatus = Timeline status.
+	//  last_pdl_lag = Lag for the last PDL report attempt, or -1L if none.  Defaults to -1L if omitted.
+	// Note: Typically last_pdl_lag == 0L if the caller has already attempted a PDL report, -1L otherwise.
 
 	public void append_timeline (PendingTask task, TimelineStatus tstatus) {
+
+		append_timeline (task, tstatus, -1L);
+		return;
+	}
+
+	public void append_timeline (PendingTask task, TimelineStatus tstatus, long last_pdl_lag) {
+
+		// If the current task is not a delayed task, delete any delayed task for the current timeline entry
+
+		switch (task.get_opcode()) {
+		case OPCODE_GEN_FORECAST:
+		case OPCODE_GEN_PDL_REPORT:
+		case OPCODE_GEN_EXPIRE:
+			break;
+
+		default:
+			delete_delayed_timeline_tasks (task.get_event_id());
+			break;
+		}
+
+		// If there is a catalog snapshot available, write it to the database
+
+		CompactEqkRupList catalog_aftershocks = tstatus.get_catalog_snapshot();
+
+		if (catalog_aftershocks != null) {
+
+			// Write catalog snapshot to database
+
+			CatalogSnapshot.submit_catalog_shapshot (
+				task.get_record_key(),							// key
+				tstatus.event_id,								// event_id
+				tstatus.forecast_results.catalog_start_time,	// start_time
+				tstatus.forecast_results.catalog_end_time,		// end_time
+				catalog_aftershocks);							// rupture_list
+
+			// Display message
+		
+			display_taskinfo ("TASK-INFO: Catalog snapshot saved:\n"
+				+ "event_id = " + tstatus.event_id + "\n"
+				+ "catalog_eqk_count = " + tstatus.forecast_results.catalog_eqk_count);
+
+		}
 
 		// Write timeline entry
 
@@ -894,6 +1283,10 @@ public class TaskDispatcher implements Runnable {
 			+ "actcode = " + tstatus.get_actcode_as_string () + "\n"
 			+ "action_time = " + tstatus.action_time + "\n"
 			+ "fc_status = " + tstatus.get_fc_status_as_string ());
+
+		// Issue any new delayed command that is needed
+
+		next_auto_timeline (tstatus, last_pdl_lag);
 
 		return;
 	}
@@ -1062,10 +1455,19 @@ public class TaskDispatcher implements Runnable {
 
 
 	// Post the next automatic database command for a timeline entry.
+	// Parameters:
+	//  tstatus = Timeline status.
+	//  last_pdl_lag = Lag for the last PDL report attempt, or -1L if none.  Defaults to -1L if omitted.
 	// Returns true if a task was posted.
-	// This form is used when staging the current task is not considered.
+	// Note: Typically last_pdl_lag == 0L if the caller has already attempted a PDL report, -1L otherwise.
 
 	public boolean next_auto_timeline (TimelineStatus tstatus) {
+
+		return next_auto_timeline (tstatus, -1L);
+	}
+
+
+	public boolean next_auto_timeline (TimelineStatus tstatus, long last_pdl_lag) {
 
 		// Get the next forecast lag, or -1 if none
 
@@ -1073,20 +1475,14 @@ public class TaskDispatcher implements Runnable {
 
 		// Get the next PDL report lag, or -1 if none, assuming the report begins now
 
-		long next_pdl_lag = get_next_pdl_lag (tstatus, next_forecast_lag, -1L, dispatcher_time);
-
-		return next_auto_timeline (tstatus, next_forecast_lag, next_pdl_lag);
-	}
-
-
-	public boolean next_auto_timeline (TimelineStatus tstatus, long next_forecast_lag, long next_pdl_lag) {
+		long next_pdl_lag = get_next_pdl_lag (tstatus, next_forecast_lag, last_pdl_lag, dispatcher_time);
 
 		// If a PDL report is desired, submit the task
 
 		if (next_pdl_lag >= 0L) {
 		
 			OpGeneratePDLReport pdl_payload = new OpGeneratePDLReport();
-			pdl_payload.setup (tstatus.last_forecast_lag, dispatcher_time);
+			pdl_payload.setup (tstatus.action_time, tstatus.last_forecast_lag, dispatcher_time);
 
 			PendingTask.submit_task (
 				tstatus.event_id,										// event id
@@ -1105,7 +1501,7 @@ public class TaskDispatcher implements Runnable {
 		if (next_forecast_lag >= 0L) {
 		
 			OpGenerateForecast forecast_payload = new OpGenerateForecast();
-			forecast_payload.setup (tstatus.last_forecast_lag, next_forecast_lag);
+			forecast_payload.setup (tstatus.action_time, tstatus.last_forecast_lag, next_forecast_lag);
 
 			PendingTask.submit_task (
 				tstatus.event_id,										// event id
@@ -1126,11 +1522,11 @@ public class TaskDispatcher implements Runnable {
 		if (tstatus.is_forecast_state() || tstatus.is_pdl_retry_state()) {
 		
 			OpGenerateExpire expire_payload = new OpGenerateExpire();
-			expire_payload.setup (tstatus.last_forecast_lag);
+			expire_payload.setup (tstatus.action_time, tstatus.last_forecast_lag);
 
 			PendingTask.submit_task (
 				tstatus.event_id,										// event id
-				dispatcher_time,										// sched_time
+				get_prompt_exec_time(),									// sched_time
 				dispatcher_time,										// submit_time
 				SUBID_AAFS,												// submit_id
 				OPCODE_GEN_EXPIRE,										// opcode
@@ -1287,90 +1683,25 @@ public class TaskDispatcher implements Runnable {
 
 	private int exec_gen_forecast (PendingTask task) {
 
-		//--- Get payload
-
-		// Get payload and check for valid task
+		//--- Get payload and timeline status
 
 		OpGenerateForecast payload = new OpGenerateForecast();
+		TimelineStatus tstatus = new TimelineStatus();
 
-		try {
-			payload.unmarshal_task (task);
-		}
+		int rescode = open_timeline (task, tstatus, payload);
 
-		// Invalid task
+		switch (rescode) {
 
-		catch (Exception e) {
+		case RESCODE_TIMELINE_EXISTS:
+			break;
 
-			// Display the error and log the task
-
-			display_invalid_task (task, e);
-			return RESCODE_TASK_CORRUPT;
-		}
-
-		//--- Check restart
-
-		// If restarting ...
-
-		TimelineEntry tentry = null;
-		TimelineStatus tstatus = null;
-
-		if (task.is_restarted()) {
-
-			// If we wrote a timeline entry ...
-
-			tentry = TimelineEntry.get_timeline_entry_for_key (task.get_record_key());
-			if (tentry != null) {
-
-				// Log the task
-
-				return RESCODE_SUCCESS;
-			}
-
-			// Delete any delayed tasks for this timeline that might have been written last time
-
-			delete_delayed_timeline_tasks (task.get_event_id());
-
-			// Delete any catalog snapshot written for this command
-
-			CatalogSnapshot catsnap = CatalogSnapshot.get_catalog_shapshot_for_key (task.get_record_key());
-			if (catsnap != null) {
-				CatalogSnapshot.delete_catalog_snapshot (catsnap);
-			}
-
-			// Now continue, starting the operation over from the beginning ...
-		}
-
-		//--- Retrieve timeline
-
-		// Get the most recent timeline entry for this event
-
-		tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id());
-
-		if (tentry == null) {
-			//display_timeline_not_found (task);
-		
+		case RESCODE_TIMELINE_NOT_FOUND:
 			set_display_taskres_log ("TASK-ERR: Timeline entry not found:\n"
 				+ "event_id = " + task.get_event_id());
+			return rescode;
 
-			return RESCODE_TIMELINE_NOT_FOUND;
-		}
-
-		// Get the status for this timeline entry
-
-		tstatus = new TimelineStatus();
-
-		try {
-			tstatus.unmarshal_timeline (tentry);
-		}
-
-		// Invalid timeline entry
-
-		catch (Exception e) {
-
-			// Display the error and log the task
-
-			display_timeline_corrupt (tentry, task, e);
-			return RESCODE_TIMELINE_CORRUPT;
+		default:
+			return rescode;
 		}
 
 		//--- Timeline state check
@@ -1382,7 +1713,6 @@ public class TaskDispatcher implements Runnable {
 		// Check that timeline is active
 
 		if (next_forecast_lag < 0L) {
-			//display_timeline_not_active (task, tstatus);
 		
 			set_display_taskres_log ("TASK-ERR: Timeline entry is not active:\n"
 				+ "event_id = " + task.get_event_id() + "\n"
@@ -1392,20 +1722,23 @@ public class TaskDispatcher implements Runnable {
 			return RESCODE_TIMELINE_NOT_ACTIVE;
 		}
 
-		// Check lag matches the command
+		// Check state matches the command
 
-		if (!( payload.next_forecast_lag == next_forecast_lag
+		if (!( payload.action_time == tstatus.action_time
+			&& payload.next_forecast_lag == next_forecast_lag
 			&& payload.last_forecast_lag == tstatus.last_forecast_lag )) {
 		
-			set_display_taskres_log ("TASK-ERR: Timeline entry lags do not match task:\n"
+			set_display_taskres_log ("TASK-ERR: Timeline entry state does not match task:\n"
 				+ "event_id = " + task.get_event_id() + "\n"
+				+ "payload.action_time = " + payload.action_time + "\n"
+				+ "tstatus.action_time = " + tstatus.action_time + "\n"
 				+ "payload.next_forecast_lag = " + payload.next_forecast_lag + "\n"
 				+ "next_forecast_lag = " + next_forecast_lag + "\n"
 				+ "payload.last_forecast_lag = " + payload.last_forecast_lag + "\n"
 				+ "tstatus.last_forecast_lag = " + tstatus.last_forecast_lag);
 
 			next_auto_timeline (tstatus);
-			return RESCODE_TIMELINE_LAG_MISMATCH;
+			return RESCODE_TIMELINE_TASK_MISMATCH;
 		}
 
 		//--- Forecast
@@ -1435,9 +1768,9 @@ public class TaskDispatcher implements Runnable {
 				return RESCODE_STAGE;
 			}
 
-			// Retries exhausted, display the error and log the task
+			// Retries exhausted, process the error and log the task
 
-			display_timeline_comcat_fail (task, tstatus, e);
+			process_timeline_comcat_fail (task, tstatus, e);
 			return RESCODE_TIMELINE_COMCAT_FAIL;
 		}
 
@@ -1485,8 +1818,21 @@ public class TaskDispatcher implements Runnable {
 		try {
 			forecast_params.fetch_all_2 (next_forecast_lag, tstatus.analyst_params);
 
+			long advisory_lag;
+
+			if (next_forecast_lag >= dispatcher_action_config.get_advisory_dur_year()) {
+				advisory_lag = ForecastResults.ADVISORY_LAG_YEAR;
+			} else if (next_forecast_lag >= dispatcher_action_config.get_advisory_dur_month()) {
+				advisory_lag = ForecastResults.ADVISORY_LAG_MONTH;
+			} else if (next_forecast_lag >= dispatcher_action_config.get_advisory_dur_week()) {
+				advisory_lag = ForecastResults.ADVISORY_LAG_WEEK;
+			} else {
+				advisory_lag = ForecastResults.ADVISORY_LAG_DAY;
+			}
+
 			forecast_results.calc_all (
 				forecast_params.mainshock_time + next_forecast_lag,
+				advisory_lag,
 				forecast_params,
 				next_forecast_lag >= dispatcher_action_config.get_seq_spec_min_lag());
 		}
@@ -1508,9 +1854,9 @@ public class TaskDispatcher implements Runnable {
 				return RESCODE_STAGE;
 			}
 
-			// Retries exhausted, display the error and log the task
+			// Retries exhausted, process the error and log the task
 
-			display_timeline_comcat_fail (task, tstatus, e);
+			process_timeline_comcat_fail (task, tstatus, e);
 			return RESCODE_TIMELINE_COMCAT_FAIL;
 		}
 
@@ -1530,11 +1876,7 @@ public class TaskDispatcher implements Runnable {
 
 				tstatus.set_state_foreshock (dispatcher_time, forecast_results.catalog_max_event_id);
 
-				// Write the timeline entry
-
-				append_timeline (task, tstatus);
-
-				// Log the task
+				// Display message
 
 				set_display_taskres_log ("TASK-INFO: Foreshock detected:\n"
 					+ "event_id = " + tstatus.event_id + "\n"
@@ -1542,24 +1884,14 @@ public class TaskDispatcher implements Runnable {
 					+ "catalog_max_event_id = " + forecast_results.catalog_max_event_id + "\n"
 					+ "catalog_max_mag = " + forecast_results.catalog_max_mag);
 
+				// Write the timeline entry
+
+				append_timeline (task, tstatus);
+
+				// Log the task
+
 				return RESCODE_TIMELINE_FORESHOCK;
 			}
-
-			// Write catalog to database
-
-			CatalogSnapshot.submit_catalog_shapshot (
-				task.get_record_key(),					// key
-				tstatus.event_id,						// event_id
-				forecast_results.catalog_start_time,	// start_time
-				forecast_results.catalog_end_time,		// end_time
-				forecast_results.catalog_aftershocks);	// rupture_list
-
-			// Display message
-		
-			display_taskinfo ("TASK-INFO: Catalog snapshot saved:\n"
-				+ "event_id = " + tstatus.event_id + "\n"
-				+ "catalog_eqk_count = " + forecast_results.catalog_eqk_count);
-
 		}
 
 		// Insert forecast into timeline status
@@ -1578,19 +1910,18 @@ public class TaskDispatcher implements Runnable {
 
 		//--- PDL report
 
-		// Get the next PDL report lag, or -1 if none, assuming the report begins now
-
-		long new_next_pdl_lag = get_next_pdl_lag (tstatus, new_next_forecast_lag, -1L, dispatcher_time);
-
 		// If a PDL report is requested based on state ...
 
 		if (tstatus.is_pdl_retry_state()) {
+
+			// Get the next PDL report lag, or -1 if none, assuming the report begins now
+
+			long new_next_pdl_lag = get_next_pdl_lag (tstatus, new_next_forecast_lag, -1L, dispatcher_time);
 
 			// Check for secondary status
 
 			if (!( is_pdl_primary() )) {
 				tstatus.set_pdl_status (TimelineStatus.PDLSTAT_SECONDARY);
-				new_next_pdl_lag = -1L;
 			}
 
 			// Otherwise, if no PDL report is requested based on timing, mark it bypassed
@@ -1608,6 +1939,7 @@ public class TaskDispatcher implements Runnable {
 				try {
 					send_pdl_report (tstatus);
 					tstatus.set_pdl_status (TimelineStatus.PDLSTAT_SUCCESS);
+					new_next_pdl_lag = -1L;
 				}
 
 				// Exception here means PDL report did not succeed
@@ -1616,7 +1948,8 @@ public class TaskDispatcher implements Runnable {
 
 					// Get time of PDL retry
 
-					new_next_pdl_lag = get_next_pdl_lag (tstatus, new_next_forecast_lag, new_next_pdl_lag, dispatcher_time);
+					tstatus.set_pdl_status (TimelineStatus.PDLSTAT_PENDING);	// in case it was changed in the try block
+					new_next_pdl_lag = get_next_pdl_lag (tstatus, new_next_forecast_lag, 0L, dispatcher_time);
 
 					// If no retry, report the failure now
 
@@ -1625,7 +1958,8 @@ public class TaskDispatcher implements Runnable {
 		
 						display_taskinfo ("TASK-ERR: Unable to send forecast report to PDL:\n"
 							+ "event_id = " + tstatus.event_id + "\n"
-							+ "last_forecast_lag = " + tstatus.last_forecast_lag);
+							+ "last_forecast_lag = " + tstatus.last_forecast_lag + "\n"
+							+ "Stack trace:\n" + getStackTraceAsString(e));
 					}
 				}
 			}
@@ -1633,17 +1967,335 @@ public class TaskDispatcher implements Runnable {
 
 		//--- Final steps
 
-		// Submit the next delayed command for this timeline
-
-		next_auto_timeline (tstatus, new_next_forecast_lag, new_next_pdl_lag);
-
 		// Write the new timeline entry
+
+		append_timeline (task, tstatus, 0L);
 
 		// Log the task
 
 		return RESCODE_SUCCESS;
 	}
 
+
+
+
+	// Generate PDL report retry.
+
+	private int exec_gen_pdl_report (PendingTask task) {
+
+		//--- Get payload and timeline status
+
+		OpGeneratePDLReport payload = new OpGeneratePDLReport();
+		TimelineStatus tstatus = new TimelineStatus();
+
+		int rescode = open_timeline (task, tstatus, payload);
+
+		switch (rescode) {
+
+		case RESCODE_TIMELINE_EXISTS:
+			break;
+
+		case RESCODE_TIMELINE_NOT_FOUND:
+			set_display_taskres_log ("TASK-ERR: Timeline entry not found:\n"
+				+ "event_id = " + task.get_event_id());
+			return rescode;
+
+		default:
+			return rescode;
+		}
+
+		//--- Timeline state check
+
+		// Check that timeline is sending a PDL report
+
+		if (!( tstatus.is_pdl_retry_state() )) {
+		
+			set_display_taskres_log ("TASK-ERR: Timeline entry is not sending a PDL report:\n"
+				+ "event_id = " + task.get_event_id() + "\n"
+				+ "tstatus.fc_status = " + tstatus.get_fc_status_as_string() + "\n"
+				+ "tstatus.pdl_status = " + tstatus.get_pdl_status_as_string());
+
+			next_auto_timeline (tstatus);
+			return RESCODE_TIMELINE_NOT_PDL_PEND;
+		}
+
+		// Check state matches the command
+
+		if (!( payload.action_time == tstatus.action_time
+			&& payload.last_forecast_lag == tstatus.last_forecast_lag )) {
+		
+			set_display_taskres_log ("TASK-ERR: Timeline entry state does not match task:\n"
+				+ "event_id = " + task.get_event_id() + "\n"
+				+ "payload.action_time = " + payload.action_time + "\n"
+				+ "tstatus.action_time = " + tstatus.action_time + "\n"
+				+ "payload.last_forecast_lag = " + payload.last_forecast_lag + "\n"
+				+ "tstatus.last_forecast_lag = " + tstatus.last_forecast_lag);
+
+			next_auto_timeline (tstatus);
+			return RESCODE_TIMELINE_TASK_MISMATCH;
+		}
+
+		//--- PDL report
+			
+		// Attempt to send the report
+
+		try {
+			send_pdl_report (tstatus);
+		}
+
+		// Exception here means PDL report did not succeed
+
+		catch (Exception e) {
+
+			// Get current PDL lag from the stage
+
+			long new_next_pdl_lag = dispatcher_action_config.int_to_lag (task.get_stage());
+
+			// Get the next forecast lag, or -1 if none
+
+			long new_next_forecast_lag = get_next_forecast_lag (tstatus);
+
+			// Get time of PDL retry
+
+			new_next_pdl_lag = get_next_pdl_lag (tstatus, new_next_forecast_lag, new_next_pdl_lag, payload.base_pdl_time);
+
+			// If there is another retry, stage the task
+
+			if (new_next_pdl_lag >= 0L) {
+				set_taskres_stage (payload.base_pdl_time + new_next_pdl_lag,
+									dispatcher_action_config.lag_to_int (new_next_pdl_lag));
+
+				return RESCODE_STAGE;
+			}
+
+			// PDL report failed
+
+			tstatus.set_state_pdl_update (dispatcher_time, TimelineStatus.PDLSTAT_FAILURE);
+		
+			set_display_taskres_log ("TASK-ERR: Unable to send forecast report to PDL:\n"
+				+ "event_id = " + tstatus.event_id + "\n"
+				+ "last_forecast_lag = " + tstatus.last_forecast_lag + "\n"
+				+ "Stack trace:\n" + getStackTraceAsString(e));
+
+			// Write the new timeline entry
+
+			append_timeline (task, tstatus);
+
+			// Log the task
+
+			return RESCODE_TIMELINE_PDL_FAIL;
+		}
+
+		//--- Final steps
+
+		// PDL report succeeded
+			
+		tstatus.set_state_pdl_update (dispatcher_time, TimelineStatus.PDLSTAT_SUCCESS);
+
+		// Write the new timeline entry
+
+		append_timeline (task, tstatus);
+
+		// Log the task
+
+		return RESCODE_SUCCESS;
+	}
+
+
+
+
+	// Generate expiration of a timeline.
+
+	private int exec_gen_expire (PendingTask task) {
+
+		//--- Get payload and timeline status
+
+		OpGenerateExpire payload = new OpGenerateExpire();
+		TimelineStatus tstatus = new TimelineStatus();
+
+		int rescode = open_timeline (task, tstatus, payload);
+
+		switch (rescode) {
+
+		case RESCODE_TIMELINE_EXISTS:
+			break;
+
+		case RESCODE_TIMELINE_NOT_FOUND:
+			set_display_taskres_log ("TASK-ERR: Timeline entry not found:\n"
+				+ "event_id = " + task.get_event_id());
+			return rescode;
+
+		default:
+			return rescode;
+		}
+
+		//--- Timeline state check
+
+		// Check that timeline is generating forecasts or sending a PDL report
+
+		if (!( tstatus.is_forecast_state() || tstatus.is_pdl_retry_state() )) {
+		
+			set_display_taskres_log ("TASK-ERR: Timeline entry is not active:\n"
+				+ "event_id = " + task.get_event_id() + "\n"
+				+ "tstatus.fc_status = " + tstatus.get_fc_status_as_string() + "\n"
+				+ "tstatus.pdl_status = " + tstatus.get_pdl_status_as_string());
+
+			next_auto_timeline (tstatus);
+			return RESCODE_TIMELINE_NOT_ACTIVE;
+		}
+
+		// Check state matches the command
+
+		if (!( payload.action_time == tstatus.action_time
+			&& payload.last_forecast_lag == tstatus.last_forecast_lag )) {
+		
+			set_display_taskres_log ("TASK-ERR: Timeline entry state does not match task:\n"
+				+ "event_id = " + task.get_event_id() + "\n"
+				+ "payload.action_time = " + payload.action_time + "\n"
+				+ "tstatus.action_time = " + tstatus.action_time + "\n"
+				+ "payload.last_forecast_lag = " + payload.last_forecast_lag + "\n"
+				+ "tstatus.last_forecast_lag = " + tstatus.last_forecast_lag);
+
+			next_auto_timeline (tstatus);
+			return RESCODE_TIMELINE_TASK_MISMATCH;
+		}
+
+		//--- Final steps
+
+		// Set expired state
+			
+		tstatus.set_state_expired (dispatcher_time);
+
+		// Write the new timeline entry
+
+		append_timeline (task, tstatus);
+
+		// Log the task
+
+		return RESCODE_SUCCESS;
+	}
+
+
+
+
+	// Intake an event for sync.
+
+	private int exec_intake_sync (PendingTask task) {
+
+		//--- Get payload and timeline status
+
+		OpIntakeSync payload = new OpIntakeSync();
+		TimelineStatus tstatus = new TimelineStatus();
+
+		int rescode = open_timeline (task, tstatus, payload);
+
+		switch (rescode) {
+
+		case RESCODE_TIMELINE_EXISTS:
+
+			// If the state can be converted from intake to normal ...
+
+			if (tstatus.is_convertible_to_normal()) {
+
+				// Update the state
+			
+				tstatus.set_state_status_update (dispatcher_time, TimelineStatus.FCSTAT_ACTIVE_NORMAL);
+
+				// If the command contains analyst data, save it
+
+				if (payload.f_has_analyst) {
+					tstatus.set_analyst_data  (
+						payload.analyst_id,
+						payload.analyst_remark,
+						payload.analyst_time,
+						payload.analyst_params,
+						payload.extra_forecast_lag);
+				}
+
+				// Write the new timeline entry
+
+				append_timeline (task, tstatus);
+
+				// Log the task
+
+				return RESCODE_TIMELINE_STATE_UPDATE;
+			}
+			return rescode;
+
+		case RESCODE_TIMELINE_NOT_FOUND:
+			break;
+
+		default:
+			return rescode;
+		}
+
+		//--- Mainshock data
+
+		// Fetch parameters, part 1 (control and mainshock parameters)
+
+		ForecastParameters forecast_params = new ForecastParameters();
+
+		try {
+			forecast_params.fetch_all_1 (task.get_event_id(), payload.get_eff_analyst_params());
+		}
+
+		// An exception here triggers a ComCat retry
+
+		catch (Exception e) {
+
+			// Get the next ComCat retry lag
+
+			long next_comcat_intake_lag = dispatcher_action_config.get_next_comcat_intake_lag (
+											dispatcher_action_config.int_to_lag (task.get_stage()) + 1L );
+
+			// If there is another retry, stage the task
+
+			if (next_comcat_intake_lag >= 0L) {
+				set_taskres_stage (task.get_sched_time() + next_comcat_intake_lag,
+									dispatcher_action_config.lag_to_int (next_comcat_intake_lag));
+				return RESCODE_STAGE;
+			}
+
+			// Retries exhausted, display the error and log the task
+		
+			set_display_taskres_log ("TASK-ERR: Event intake failed due to ComCat failure:\n"
+				+ "event_id = " + task.get_event_id() + "\n"
+				+ "Stack trace:\n" + getStackTraceAsString(e));
+
+			return RESCODE_INTAKE_COMCAT_FAIL;
+		}
+
+		//--- Final steps
+
+		// Set track state
+			
+		tstatus.set_state_track (
+			dispatcher_time,
+			dispatcher_action_config,
+			task.get_event_id(),
+			forecast_params.mainshock_time,
+			TimelineStatus.FCORIG_SYNC,
+			TimelineStatus.FCSTAT_ACTIVE_NORMAL);
+
+		// If the command contains analyst data, save it
+
+		if (payload.f_has_analyst) {
+			tstatus.set_analyst_data  (
+				payload.analyst_id,
+				payload.analyst_remark,
+				payload.analyst_time,
+				payload.analyst_params,
+				payload.extra_forecast_lag);
+		}
+
+		// Write the new timeline entry
+
+		append_timeline (task, tstatus);
+
+		// Log the task
+
+		return RESCODE_SUCCESS;
+	}
 
 
 

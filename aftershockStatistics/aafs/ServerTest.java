@@ -1432,6 +1432,37 @@ public class ServerTest {
 
 
 
+	// Test #32 - Post a sync intake command for the given event.
+
+	public static void test32(String[] args) {
+
+		// One additional argument
+
+		if (args.length != 2) {
+			System.err.println ("ServerTest : Invalid 'test32' subcommand");
+			return;
+		}
+
+		String event_id = args[1];
+
+		OpIntakeSync payload = new OpIntakeSync();
+		payload.setup ();
+
+		int opcode = TaskDispatcher.OPCODE_INTAKE_SYNC;
+		int stage = 0;
+
+		// Post the task
+
+		long the_time = ServerClock.get_time();
+
+		TaskDispatcher.post_task (event_id, the_time, the_time, "ServerTest", opcode, stage, payload.marshal_task());
+
+		return;
+	}
+
+
+
+
 	// Test dispatcher.
 	
 	public static void main(String[] args) {
@@ -1946,6 +1977,22 @@ public class ServerTest {
 
 			try {
 				test31(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+		// Subcommand : Test #32
+		// Command format:
+		//  test32  event_id
+		// Post a sync intake command for the given event.
+
+		if (args[0].equalsIgnoreCase ("test32")) {
+
+			try {
+				test32(args);
             } catch (Exception e) {
                 e.printStackTrace();
 			}

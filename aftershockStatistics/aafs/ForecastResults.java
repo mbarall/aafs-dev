@@ -47,19 +47,24 @@ public class ForecastResults {
 
 	//----- Constants -----
 
-	// Result status codes.
+	// Standard values of the advisory duration.
 
-	public static final int RSTAT_MIN = 0;			// Minimum value
-	public static final int RSTAT_OMITTED = 0;		// Results omitted or not available
-	public static final int RSTAT_AUTO = 1;			// Results determined by automatic system
-	public static final int RSTAT_MAX = 1;			// Maximum value
+	public static final long ADVISORY_LAG_DAY   = 86400000L;	// 1 day
+	public static final long ADVISORY_LAG_WEEK  = 604800000L;	// 1 week = 7 days
+	public static final long ADVISORY_LAG_MONTH = 2592000000L;	// 1 month = 30 days
+	public static final long ADVISORY_LAG_YEAR  = 31536000000L;	// 1 year = 365 days
 
 
 	//----- Root parameters -----
 
 	// Time results were prepared, in milliseconds since the epoch.
+	// This is used as the start time for the forecasts, and typically equals the mainshock time plus the forecast lag.
 
 	public long result_time = 0L;
+
+	// Advisory duration, in milliseconds.
+
+	public long advisory_lag = ADVISORY_LAG_WEEK;
 
 
 	//----- Catalog results -----
@@ -263,12 +268,22 @@ public class ForecastResults {
 			GregorianCalendar eventDate = new GregorianCalendar();
 			eventDate.setTimeInMillis(mainshock.getOriginTime());
 			GregorianCalendar startDate = new GregorianCalendar();
-			startDate.setTimeInMillis(catalog_start_time);
+			startDate.setTimeInMillis(Math.max (result_time, mainshock.getOriginTime() + 1000L));
 			USGS_AftershockForecast forecast = new USGS_AftershockForecast (generic_model, catalog_aftershocks, eventDate, startDate);
+
+			if (advisory_lag >= ADVISORY_LAG_YEAR) {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_YEAR);
+			} else if (advisory_lag >= ADVISORY_LAG_MONTH) {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_MONTH);
+			} else if (advisory_lag >= ADVISORY_LAG_WEEK) {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_WEEK);
+			} else {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_DAY);
+			}
 
 			// Get the JSON String
 
-			JSONObject json = forecast.buildJSON();
+			JSONObject json = forecast.buildJSON(result_time);
 			if (json == null) {
 				throw new RuntimeException("ForecastResults.calc_generic_results: Unable to generate JSON");
 			}
@@ -385,12 +400,22 @@ public class ForecastResults {
 			GregorianCalendar eventDate = new GregorianCalendar();
 			eventDate.setTimeInMillis(mainshock.getOriginTime());
 			GregorianCalendar startDate = new GregorianCalendar();
-			startDate.setTimeInMillis(catalog_start_time);
+			startDate.setTimeInMillis(Math.max (result_time, mainshock.getOriginTime() + 1000L));
 			USGS_AftershockForecast forecast = new USGS_AftershockForecast (seq_spec_model, catalog_aftershocks, eventDate, startDate);
+
+			if (advisory_lag >= ADVISORY_LAG_YEAR) {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_YEAR);
+			} else if (advisory_lag >= ADVISORY_LAG_MONTH) {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_MONTH);
+			} else if (advisory_lag >= ADVISORY_LAG_WEEK) {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_WEEK);
+			} else {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_DAY);
+			}
 
 			// Get the JSON String
 
-			JSONObject json = forecast.buildJSON();
+			JSONObject json = forecast.buildJSON(result_time);
 			if (json == null) {
 				throw new RuntimeException("ForecastResults.calc_seq_spec_results: Unable to generate JSON");
 			}
@@ -508,12 +533,22 @@ public class ForecastResults {
 			GregorianCalendar eventDate = new GregorianCalendar();
 			eventDate.setTimeInMillis(mainshock.getOriginTime());
 			GregorianCalendar startDate = new GregorianCalendar();
-			startDate.setTimeInMillis(catalog_start_time);
+			startDate.setTimeInMillis(Math.max (result_time, mainshock.getOriginTime() + 1000L));
 			USGS_AftershockForecast forecast = new USGS_AftershockForecast (bayesian_model, catalog_aftershocks, eventDate, startDate);
+
+			if (advisory_lag >= ADVISORY_LAG_YEAR) {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_YEAR);
+			} else if (advisory_lag >= ADVISORY_LAG_MONTH) {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_MONTH);
+			} else if (advisory_lag >= ADVISORY_LAG_WEEK) {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_WEEK);
+			} else {
+				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_DAY);
+			}
 
 			// Get the JSON String
 
-			JSONObject json = forecast.buildJSON();
+			JSONObject json = forecast.buildJSON(result_time);
 			if (json == null) {
 				throw new RuntimeException("ForecastResults.calc_bayesian_results: Unable to generate JSON");
 			}
@@ -580,8 +615,9 @@ public class ForecastResults {
 	// Calculate all results.
 	// If f_seq_spec is false, then sequence specific results are not calculated.
 
-	public void calc_all (long the_result_time, ForecastParameters params, boolean f_seq_spec) {
+	public void calc_all (long the_result_time, long the_advisory_lag, ForecastParameters params, boolean f_seq_spec) {
 		result_time = the_result_time;
+		advisory_lag = the_advisory_lag;
 		calc_catalog_results (params);
 		calc_generic_results (params);
 		calc_seq_spec_results (params, f_seq_spec);
@@ -656,6 +692,7 @@ public class ForecastResults {
 	public String toString() {
 		return "ForecastResults:" + "\n"
 		+ "result_time = " + result_time + "\n"
+		+ "advisory_lag = " + advisory_lag + "\n"
 
 		+ "catalog_result_avail = " + catalog_result_avail + "\n"
 		+ ((!catalog_result_avail) ? "" : (
@@ -728,6 +765,7 @@ public class ForecastResults {
 		// Contents
 
 		writer.marshalLong   ("result_time", result_time);
+		writer.marshalLong   ("advisory_lag", advisory_lag);
 
 		writer.marshalBoolean ("catalog_result_avail", catalog_result_avail);
 		if (catalog_result_avail) {
@@ -773,6 +811,7 @@ public class ForecastResults {
 		// Contents
 
 		result_time = reader.unmarshalLong   ("result_time");
+		advisory_lag = reader.unmarshalLong   ("advisory_lag");
 
 		catalog_result_avail = reader.unmarshalBoolean ("catalog_result_avail");
 		if (catalog_result_avail) {
@@ -944,7 +983,7 @@ public class ForecastResults {
 			// Get results
 
 			ForecastResults results = new ForecastResults();
-			results.calc_all (params.mainshock_time + the_forecast_lag, params, true);
+			results.calc_all (params.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, params, true);
 
 			// Display them
 
@@ -1000,7 +1039,7 @@ public class ForecastResults {
 			// Get results
 
 			ForecastResults results = new ForecastResults();
-			results.calc_all (params.mainshock_time + the_forecast_lag, params, true);
+			results.calc_all (params.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, params, true);
 
 			// Display them
 

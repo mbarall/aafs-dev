@@ -142,6 +142,27 @@ public class ActionConfig {
 		return param_set.seq_spec_min_lag;
 	}
 
+	// Get minimum time after an earthquake at which one-week advisories can be generated, in milliseconds.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long get_advisory_dur_week () {
+		return param_set.advisory_dur_week;
+	}
+
+	// Get minimum time after an earthquake at which one-month advisories can be generated, in milliseconds.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long get_advisory_dur_month () {
+		return param_set.advisory_dur_month;
+	}
+
+	// Get minimum time after an earthquake at which one-year advisories can be generated, in milliseconds.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long get_advisory_dur_year () {
+		return param_set.advisory_dur_year;
+	}
+
 	// Get the first element of forecast_lags that is >= the supplied min_lag.
 	// The return is -1 if the supplied min_lag is greater than all elements.
 	// If a value is found, it is guaranteed to be a whole number of seconds, from 1 to 10^9 seconds.
