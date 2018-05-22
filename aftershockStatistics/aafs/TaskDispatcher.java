@@ -694,6 +694,8 @@ public class TaskDispatcher implements Runnable {
 
 		case OPCODE_INTAKE_SYNC: rescode = exec_intake_sync (task); break;
 
+		case OPCODE_INTAKE_PDL: rescode = exec_intake_pdl (task); break;
+
 		}
 
 		// Handle task disposition, depending on the result code
@@ -1798,17 +1800,20 @@ public class TaskDispatcher implements Runnable {
 				forecast_params.mainshock_lat, forecast_params.mainshock_lon, forecast_params.mainshock_mag);
 
 			// If none, then withdraw the timeline
+
+			if (intake_region == null) {
 		
-			set_display_taskres_log ("TASK-INFO: Timeline entry withdrawn:\n"
-				+ "event_id = " + task.get_event_id() + "\n"
-				+ "forecast_params.mainshock_lat = " + forecast_params.mainshock_lat + "\n"
-				+ "forecast_params.mainshock_lon = " + forecast_params.mainshock_lon + "\n"
-				+ "forecast_params.mainshock_mag = " + forecast_params.mainshock_mag);
+				set_display_taskres_log ("TASK-INFO: Timeline entry withdrawn:\n"
+					+ "event_id = " + task.get_event_id() + "\n"
+					+ "forecast_params.mainshock_lat = " + forecast_params.mainshock_lat + "\n"
+					+ "forecast_params.mainshock_lon = " + forecast_params.mainshock_lon + "\n"
+					+ "forecast_params.mainshock_mag = " + forecast_params.mainshock_mag);
 
-			tstatus.set_state_withdrawn (dispatcher_time, forecast_params.mainshock_time);
-			append_timeline (task, tstatus);
+				tstatus.set_state_withdrawn (dispatcher_time, forecast_params.mainshock_time);
+				append_timeline (task, tstatus);
 
-			return RESCODE_TIMELINE_WITHDRAW;
+				return RESCODE_TIMELINE_WITHDRAW;
+			}
 		}
 
 		// Fetch parameters, part 2 (model and search parameters), and calculate results
@@ -2276,6 +2281,113 @@ public class TaskDispatcher implements Runnable {
 			forecast_params.mainshock_time,
 			TimelineStatus.FCORIG_SYNC,
 			TimelineStatus.FCSTAT_ACTIVE_NORMAL);
+
+		// If the command contains analyst data, save it
+
+		if (payload.f_has_analyst) {
+			tstatus.set_analyst_data  (
+				payload.analyst_id,
+				payload.analyst_remark,
+				payload.analyst_time,
+				payload.analyst_params,
+				payload.extra_forecast_lag);
+		}
+
+		// Write the new timeline entry
+
+		append_timeline (task, tstatus);
+
+		// Log the task
+
+		return RESCODE_SUCCESS;
+	}
+
+
+
+
+	// Intake an event for PDL.
+
+	private int exec_intake_pdl (PendingTask task) {
+
+		//--- Get payload and timeline status
+
+		OpIntakePDL payload = new OpIntakePDL();
+		TimelineStatus tstatus = new TimelineStatus();
+
+		int rescode = open_timeline (task, tstatus, payload);
+
+		switch (rescode) {
+
+		case RESCODE_TIMELINE_EXISTS:
+			return RESCODE_DELETE;		// Just delete, so that log is not flooded with PDL notifications
+
+		case RESCODE_TIMELINE_NOT_FOUND:
+			break;
+
+		default:
+			return rescode;
+		}
+
+		//--- Mainshock data
+
+		// Fetch parameters, part 1 (control and mainshock parameters)
+
+		ForecastParameters forecast_params = new ForecastParameters();
+
+		try {
+			forecast_params.fetch_all_1 (task.get_event_id(), payload.get_eff_analyst_params());
+		}
+
+		// An exception here triggers a ComCat retry
+
+		catch (Exception e) {
+
+			// Get the next ComCat retry lag
+
+			long next_comcat_intake_lag = dispatcher_action_config.get_next_comcat_intake_lag (
+											dispatcher_action_config.int_to_lag (task.get_stage()) + 1L );
+
+			// If there is another retry, stage the task
+
+			if (next_comcat_intake_lag >= 0L) {
+				set_taskres_stage (task.get_sched_time() + next_comcat_intake_lag,
+									dispatcher_action_config.lag_to_int (next_comcat_intake_lag));
+				return RESCODE_STAGE;
+			}
+
+			// Retries exhausted, display the error and log the task
+		
+			set_display_taskres_log ("TASK-ERR: Event intake failed due to ComCat failure:\n"
+				+ "event_id = " + task.get_event_id() + "\n"
+				+ "Stack trace:\n" + getStackTraceAsString(e));
+
+			return RESCODE_INTAKE_COMCAT_FAIL;
+		}
+
+		//--- Intake check
+
+		// Search intake regions
+
+		IntakeSphRegion intake_region = dispatcher_action_config.get_pdl_intake_region_for_intake_mag (
+			forecast_params.mainshock_lat, forecast_params.mainshock_lon, forecast_params.mainshock_mag);
+
+		// If none, then drop the event
+
+		if (intake_region == null) {
+			return RESCODE_DELETE;		// Just delete, so that log is not flooded with PDL notifications
+		}
+
+		//--- Final steps
+
+		// Set track state
+			
+		tstatus.set_state_track (
+			dispatcher_time,
+			dispatcher_action_config,
+			task.get_event_id(),
+			forecast_params.mainshock_time,
+			TimelineStatus.FCORIG_PDL,
+			TimelineStatus.FCSTAT_ACTIVE_INTAKE);
 
 		// If the command contains analyst data, save it
 

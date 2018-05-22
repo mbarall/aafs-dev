@@ -1463,6 +1463,91 @@ public class ServerTest {
 
 
 
+	// Test #33 - Parse a PDL intake command for the given command line.
+
+	public static void test33(String[] args) {
+
+		// At least one additional argument
+
+		if (args.length < 2) {
+			System.err.println ("ServerTest : Invalid 'test33' subcommand");
+			return;
+		}
+
+		OpIntakePDL payload = new OpIntakePDL();
+
+		payload.setup (args, 1, args.length);
+
+		System.out.println ("PDL arguments:");
+		for (String s : payload.pdl_args) {
+			System.out.println (s);
+		}
+
+		System.out.println ("Parsed values:");
+		System.out.println ("pdl_status = " + payload.pdl_status);
+		System.out.println ("pdl_action = " + payload.pdl_action);
+		System.out.println ("pdl_type = " + payload.pdl_type);
+		System.out.println ("event_id = " + payload.event_id);
+		System.out.println ("mainshock_time = " + payload.mainshock_time);
+		System.out.println ("mainshock_mag = " + payload.mainshock_mag);
+		System.out.println ("mainshock_lat = " + payload.mainshock_lat);
+		System.out.println ("mainshock_lon = " + payload.mainshock_lon);
+		System.out.println ("mainshock_depth = " + payload.mainshock_depth);
+
+		return;
+	}
+
+
+
+
+	// Test #34 - Post a PDL intake command for the given command line.
+
+	public static void test34(String[] args) {
+
+		// At least one additional argument
+
+		if (args.length < 2) {
+			System.err.println ("ServerTest : Invalid 'test34' subcommand");
+			return;
+		}
+
+		OpIntakePDL payload = new OpIntakePDL();
+
+		payload.setup (args, 1, args.length);
+
+		System.out.println ("PDL arguments:");
+		for (String s : payload.pdl_args) {
+			System.out.println (s);
+		}
+
+		System.out.println ("Parsed values:");
+		System.out.println ("pdl_status = " + payload.pdl_status);
+		System.out.println ("pdl_action = " + payload.pdl_action);
+		System.out.println ("pdl_type = " + payload.pdl_type);
+		System.out.println ("event_id = " + payload.event_id);
+		System.out.println ("mainshock_time = " + payload.mainshock_time);
+		System.out.println ("mainshock_mag = " + payload.mainshock_mag);
+		System.out.println ("mainshock_lat = " + payload.mainshock_lat);
+		System.out.println ("mainshock_lon = " + payload.mainshock_lon);
+		System.out.println ("mainshock_depth = " + payload.mainshock_depth);
+
+		String event_id = payload.event_id;
+
+		int opcode = TaskDispatcher.OPCODE_INTAKE_PDL;
+		int stage = 0;
+
+		// Post the task
+
+		long the_time = ServerClock.get_time();
+
+		TaskDispatcher.post_task (event_id, the_time, the_time, "ServerTest", opcode, stage, payload.marshal_task());
+
+		return;
+	}
+
+
+
+
 	// Test dispatcher.
 	
 	public static void main(String[] args) {
@@ -1993,6 +2078,38 @@ public class ServerTest {
 
 			try {
 				test32(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+		// Subcommand : Test #33
+		// Command format:
+		//  test33  arg...
+		// Parse a PDL intake command for the given command line.
+
+		if (args[0].equalsIgnoreCase ("test33")) {
+
+			try {
+				test33(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+		// Subcommand : Test #34
+		// Command format:
+		//  test34  arg...
+		// Post a PDL intake command for the given command line.
+
+		if (args[0].equalsIgnoreCase ("test34")) {
+
+			try {
+				test34(args);
             } catch (Exception e) {
                 e.printStackTrace();
 			}
