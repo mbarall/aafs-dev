@@ -233,7 +233,10 @@ public class TaskDispatcher implements Runnable {
 	public static final int RESCODE_TASK_RETRY_SUCCESS = 13;	// Task completed on task dispatcher retry
 	public static final int RESCODE_TIMELINE_STATE_UPDATE = 14;	// Timeline state was updated
 	public static final int RESCODE_INTAKE_COMCAT_FAIL = 15;	// Event intake failed due to ComCat failure
-	public static final int RESCODE_MAX = 15;					// Maximum known result code
+	public static final int RESCODE_TIMELINE_ANALYST_SET = 16;	// Timeline analyst data was set
+	public static final int RESCODE_TIMELINE_ANALYST_FAIL = 17;	// Timeline analyst intervention failed due to bad state
+	public static final int RESCODE_TIMELINE_ANALYST_NONE = 18;	// Timeline analyst intervention not done
+	public static final int RESCODE_MAX = 18;					// Maximum known result code
 
 	public static final int RESCODE_DELETE = -1;				// Special result code: delete current task (without logging it)
 	public static final int RESCODE_STAGE = -2;					// Special result code: stage current task (execute it again)
@@ -257,6 +260,9 @@ public class TaskDispatcher implements Runnable {
 		case RESCODE_TASK_RETRY_SUCCESS: return "RESCODE_TASK_RETRY_SUCCESS";
 		case RESCODE_TIMELINE_STATE_UPDATE: return "RESCODE_TIMELINE_STATE_UPDATE";
 		case RESCODE_INTAKE_COMCAT_FAIL: return "RESCODE_INTAKE_COMCAT_FAIL";
+		case RESCODE_TIMELINE_ANALYST_SET: return "RESCODE_TIMELINE_ANALYST_SET";
+		case RESCODE_TIMELINE_ANALYST_FAIL: return "RESCODE_TIMELINE_ANALYST_FAIL";
+		case RESCODE_TIMELINE_ANALYST_NONE: return "RESCODE_TIMELINE_ANALYST_NONE";
 
 		case RESCODE_DELETE: return "RESCODE_DELETE";
 		case RESCODE_STAGE: return "RESCODE_STAGE";
@@ -696,6 +702,8 @@ public class TaskDispatcher implements Runnable {
 
 		case OPCODE_INTAKE_PDL: rescode = exec_intake_pdl (task); break;
 
+		case OPCODE_ANALYST_INTERVENE: rescode = exec_analyst_intervene (task); break;
+
 		}
 
 		// Handle task disposition, depending on the result code
@@ -903,7 +911,7 @@ public class TaskDispatcher implements Runnable {
 
 	// Convert a time (in milliseconds after the epoch) to a human-readable string.
 
-	public String time_to_string (long the_time) {
+	public static String time_to_string (long the_time) {
 		SimpleDateFormat fmt = new SimpleDateFormat ("yyyy-MM-dd HH:mm:ss z");
 		fmt.setTimeZone (TimeZone.getTimeZone ("UTC"));
 		return fmt.format (new Date (the_time));
@@ -2225,6 +2233,32 @@ public class TaskDispatcher implements Runnable {
 
 				return RESCODE_TIMELINE_STATE_UPDATE;
 			}
+
+			// If the command contains analyst data and the timeline is active, set it
+
+			if (payload.f_has_analyst && tstatus.is_forecast_state()) {
+
+				// Analyst intervention
+			
+				tstatus.set_state_analyst_intervention (dispatcher_time);
+
+				// Save analyst data
+
+				tstatus.set_analyst_data  (
+					payload.analyst_id,
+					payload.analyst_remark,
+					payload.analyst_time,
+					payload.analyst_params,
+					payload.extra_forecast_lag);
+
+				// Write the new timeline entry
+
+				append_timeline (task, tstatus);
+
+				// Log the task
+
+				return RESCODE_TIMELINE_ANALYST_SET;
+			}
 			return rescode;
 
 		case RESCODE_TIMELINE_NOT_FOUND:
@@ -2342,6 +2376,10 @@ public class TaskDispatcher implements Runnable {
 
 		catch (Exception e) {
 
+			// Delete any other PDL intake commands for this event, so we don't have multiple retries going on
+
+			delete_all_waiting_tasks (task.get_event_id(), OPCODE_INTAKE_PDL);
+
 			// Get the next ComCat retry lag
 
 			long next_comcat_intake_lag = dispatcher_action_config.get_next_comcat_intake_lag (
@@ -2388,6 +2426,207 @@ public class TaskDispatcher implements Runnable {
 			forecast_params.mainshock_time,
 			TimelineStatus.FCORIG_PDL,
 			TimelineStatus.FCSTAT_ACTIVE_INTAKE);
+
+		// If the command contains analyst data, save it
+
+		if (payload.f_has_analyst) {
+			tstatus.set_analyst_data  (
+				payload.analyst_id,
+				payload.analyst_remark,
+				payload.analyst_time,
+				payload.analyst_params,
+				payload.extra_forecast_lag);
+		}
+
+		// Write the new timeline entry
+
+		append_timeline (task, tstatus);
+
+		// Log the task
+
+		return RESCODE_SUCCESS;
+	}
+
+
+
+
+	// Analyst intervention.
+
+	private int exec_analyst_intervene (PendingTask task) {
+
+		//--- Get payload and timeline status
+
+		OpAnalystIntervene payload = new OpAnalystIntervene();
+		TimelineStatus tstatus = new TimelineStatus();
+
+		int rescode = open_timeline (task, tstatus, payload);
+
+		switch (rescode) {
+
+		case RESCODE_TIMELINE_EXISTS:
+
+			// If request to start generating forecasts ...
+
+			if (payload.state_change == OpAnalystIntervene.ASREQ_START && tstatus.can_analyst_start()) {
+
+				// Analyst intervention
+
+				tstatus.set_state_analyst_intervention (dispatcher_time);
+
+				// Update the state
+			
+				tstatus.set_fc_status (TimelineStatus.FCSTAT_ACTIVE_NORMAL);
+
+				// If the command contains analyst data, save it
+
+				if (payload.f_has_analyst) {
+					tstatus.set_analyst_data  (
+						payload.analyst_id,
+						payload.analyst_remark,
+						payload.analyst_time,
+						payload.analyst_params,
+						payload.extra_forecast_lag);
+				}
+
+				// Write the new timeline entry
+
+				append_timeline (task, tstatus);
+
+				// Log the task
+
+				return RESCODE_SUCCESS;
+			}
+
+			// If request to stop generating forecasts ...
+
+			if (payload.state_change == OpAnalystIntervene.ASREQ_STOP && tstatus.can_analyst_stop()) {
+
+				// Analyst intervention
+
+				tstatus.set_state_analyst_intervention (dispatcher_time);
+
+				// Update the state
+			
+				tstatus.set_fc_status (TimelineStatus.FCSTAT_STOP_ANALYST);
+
+				// If the command contains analyst data, save it
+
+				if (payload.f_has_analyst) {
+					tstatus.set_analyst_data  (
+						payload.analyst_id,
+						payload.analyst_remark,
+						payload.analyst_time,
+						payload.analyst_params,
+						payload.extra_forecast_lag);
+				}
+
+				// Write the new timeline entry
+
+				append_timeline (task, tstatus);
+
+				// Log the task
+
+				return RESCODE_SUCCESS;
+			}
+
+			// If request to set analyst data with no change in state
+
+			if (payload.f_has_analyst && tstatus.can_analyst_update()) {
+
+				// Analyst intervention
+			
+				tstatus.set_state_analyst_intervention (dispatcher_time);
+
+				// Save analyst data
+
+				tstatus.set_analyst_data  (
+					payload.analyst_id,
+					payload.analyst_remark,
+					payload.analyst_time,
+					payload.analyst_params,
+					payload.extra_forecast_lag);
+
+				// Write the new timeline entry
+
+				append_timeline (task, tstatus);
+
+				// Log the task
+
+				return RESCODE_TIMELINE_ANALYST_SET;
+			}
+
+			if (payload.f_has_analyst) {
+				return RESCODE_TIMELINE_ANALYST_FAIL;
+			}
+
+			return RESCODE_TIMELINE_ANALYST_NONE;
+
+		case RESCODE_TIMELINE_NOT_FOUND:
+			break;
+
+		default:
+			return rescode;
+		}
+
+		//--- Mainshock data
+
+		// If not requesting timeline creation, just return
+
+		if (!( payload.f_create_timeline )) {
+			return RESCODE_TIMELINE_ANALYST_NONE;
+		}
+
+		// Fetch parameters, part 1 (control and mainshock parameters)
+
+		ForecastParameters forecast_params = new ForecastParameters();
+
+		try {
+			forecast_params.fetch_all_1 (task.get_event_id(), payload.get_eff_analyst_params());
+		}
+
+		// An exception here triggers a ComCat retry
+
+		catch (Exception e) {
+
+			// Get the next ComCat retry lag
+
+			long next_comcat_intake_lag = dispatcher_action_config.get_next_comcat_intake_lag (
+											dispatcher_action_config.int_to_lag (task.get_stage()) + 1L );
+
+			// If there is another retry, stage the task
+
+			if (next_comcat_intake_lag >= 0L) {
+				set_taskres_stage (task.get_sched_time() + next_comcat_intake_lag,
+									dispatcher_action_config.lag_to_int (next_comcat_intake_lag));
+				return RESCODE_STAGE;
+			}
+
+			// Retries exhausted, display the error and log the task
+		
+			set_display_taskres_log ("TASK-ERR: Analyst intervention failed due to ComCat failure:\n"
+				+ "event_id = " + task.get_event_id() + "\n"
+				+ "Stack trace:\n" + getStackTraceAsString(e));
+
+			return RESCODE_INTAKE_COMCAT_FAIL;
+		}
+
+		//--- Final steps
+
+		// Set track state
+			
+		tstatus.set_state_track (
+			dispatcher_time,
+			dispatcher_action_config,
+			task.get_event_id(),
+			forecast_params.mainshock_time,
+			TimelineStatus.FCORIG_ANALYST,
+			TimelineStatus.FCSTAT_ACTIVE_NORMAL);
+
+		// If request to stop sending forecasts, create timeline in the stopped state
+
+		if (payload.state_change == OpAnalystIntervene.ASREQ_STOP) {
+			tstatus.set_fc_status (TimelineStatus.FCSTAT_STOP_ANALYST);
+		}
 
 		// If the command contains analyst data, save it
 

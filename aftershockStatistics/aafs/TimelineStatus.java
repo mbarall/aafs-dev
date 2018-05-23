@@ -431,6 +431,46 @@ public class TimelineStatus extends DBPayload {
 		return false;
 	}
 
+	// Return true if this timeline is in a state that an analyst can
+	// start by changing fc_status (with or without updating analyst data).
+
+	public boolean can_analyst_start () {
+		switch (fc_status) {
+		case FCSTAT_ACTIVE_INTAKE:
+		case FCSTAT_STOP_ANALYST:
+		case FCSTAT_STOP_WITHDRAWN:
+			return true;
+		}
+		return false;
+	}
+
+	// Return true if this timeline is in a state that an analyst can
+	// stop by changing fc_status (with or without updating analyst data).
+
+	public boolean can_analyst_stop () {
+		switch (fc_status) {
+		case FCSTAT_ACTIVE_NORMAL:
+		case FCSTAT_ACTIVE_INTAKE:
+		case FCSTAT_STOP_WITHDRAWN:
+			return true;
+		}
+		return false;
+	}
+
+	// Return true if this timeline is in a state that an analyst can
+	// update (withough changing fc_status).
+
+	public boolean can_analyst_update () {
+		switch (fc_status) {
+		case FCSTAT_ACTIVE_NORMAL:
+		case FCSTAT_ACTIVE_INTAKE:
+		case FCSTAT_STOP_ANALYST:
+		case FCSTAT_STOP_WITHDRAWN:
+			return true;
+		}
+		return false;
+	}
+
 
 
 
