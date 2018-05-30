@@ -14,7 +14,10 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Properties;
+import java.util.ArrayList;
+import java.util.HashSet;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -22,6 +25,8 @@ import org.json.simple.parser.ParseException;
 import org.opensha.commons.geo.GeoTools;
 import org.opensha.commons.geo.Location;
 import org.opensha.commons.geo.Region;
+import org.opensha.commons.param.Parameter;
+import org.opensha.commons.param.ParameterList;
 import org.opensha.commons.param.impl.StringParameter;
 import org.opensha.commons.util.ExceptionUtils;
 import org.opensha.sha.earthquake.observedEarthquake.ObsEqkRupList;
@@ -34,20 +39,69 @@ import java.io.FileNotFoundException;
 
 import scratch.aftershockStatistics.util.SphLatLon;
 import scratch.aftershockStatistics.util.SphRegion;
+import scratch.aftershockStatistics.util.SphRegionCircle;
+import scratch.aftershockStatistics.util.SimpleUtils;
 
 public class ComcatAccessor {
 	
 	private static final boolean D = true;
 	
 	protected EventWebService service;
+
+	protected ArrayList<Integer> http_statuses;
 	
 	public ComcatAccessor() {
 		try {
-			service = new EventWebService(new URL("https://earthquake.usgs.gov/fdsnws/event/1/"));
+			//service = new EventWebService(new URL("https://earthquake.usgs.gov/fdsnws/event/1/"));
+			service = new ComcatEventWebService(new URL("https://earthquake.usgs.gov/fdsnws/event/1/"));
 		} catch (MalformedURLException e) {
 			ExceptionUtils.throwAsRuntimeException(e);
 		}
+
+		http_statuses = new ArrayList<Integer>();
 	}
+
+
+
+	// Parameter name for the place description.
+
+	public static final String PARAM_NAME_DESCRIPTION = "description";
+
+	// Parameter name for the event id list.
+
+	public static final String PARAM_NAME_IDLIST = "ids";
+
+	// Parameter name for the network.
+
+	public static final String PARAM_NAME_NETWORK = "net";
+
+	// Parameter name for the event code.
+
+	public static final String PARAM_NAME_CODE = "code";
+
+	// Maximum depth allowed in Comcat searches, in kilometers.
+
+	public static final double COMCAT_MAX_DEPTH = 1000.0;
+
+	// Minimum depth allowed in Comcat searches, in kilometers.
+
+	public static final double COMCAT_MIN_DEPTH = -100.0;
+
+	// Maximum number of events that can be requested in a single call.
+
+	public static final int COMCAT_MAX_LIMIT = 20000;
+
+	// Initial offset into search results.
+
+	public static final int COMCAT_INIT_INDEX = 1;
+
+	// Maximum number of calls permitted in a single operation.
+
+	public static final int COMCAT_MAX_CALLS = 25;
+
+	// Value to use for no minimum magnitude in Comcat searches.
+
+	public static final double COMCAT_NO_MIN_MAG = -10.0;
 	
 
 
@@ -110,6 +164,7 @@ public class ComcatAccessor {
 
 
 	/**
+	 * [OLD VERSION]
 	 * Fetches an event with the given ID, e.g. "ci37166079"
 	 * @param eventID = Earthquake event id.
 	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
@@ -119,7 +174,7 @@ public class ComcatAccessor {
 	 * A null return may indicate a temporary condition (e.g., Comcat not responding) or a
 	 * permanent condition (e.g., event id not recognized).
 	 */
-	public ObsEqkRupture fetchEvent(String eventID, boolean wrapLon, boolean extendedInfo) {
+	public ObsEqkRupture fetchEvent_old(String eventID, boolean wrapLon, boolean extendedInfo) {
 		EventQuery query = new EventQuery();
 		query.setEventId(eventID);
 		List<JsonEvent> events;
@@ -142,6 +197,75 @@ public class ComcatAccessor {
 //		printJSON(event);
 		
 		return eventToObsRup(event, wrapLon, extendedInfo);
+	}
+	
+
+
+
+	/**
+	 * Fetches an event with the given ID, e.g. "ci37166079"
+	 * @param eventID = Earthquake event id.
+	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
+	 * @param extendedInfo = True to return extended information, see eventToObsRup below.
+	 * @return
+	 * The return value can be null if the event could not be obtained.
+	 * A null return means the event is either not found or deleted in Comcat.
+	 * A ComcatException means that there was an error accessing Comcat.
+	 */
+	public ObsEqkRupture fetchEvent (String eventID, boolean wrapLon, boolean extendedInfo) {
+
+		// Set up query on event id
+
+		EventQuery query = new EventQuery();
+		query.setEventId(eventID);
+
+		// Call Comcat to get the list of events satisfying the query
+
+		List<JsonEvent> events;
+
+		try {
+			events = service.getEvents(query);
+
+		} catch (IOException e) {
+			// If the HTTP status is unknown, then we don't know if this is error or not-found, so we treat it as not-found
+			if (get_http_status_code() == -1) {
+				return null;
+			}
+			// Otherwise it's an I/O error
+			throw new ComcatException ("ComcatAccessor: I/O error while accessing Comcat", e);
+
+		} catch (Exception e) {
+			// An exception not an I/O exception probably indicates bad data received
+			throw new ComcatException ("ComcatAccessor: Data error while accessing Comcat", e);
+		}
+
+		// If no events received, then not found
+
+		if (events.isEmpty()) {
+			return null;
+		}
+
+		// Error if more than one event was returned
+
+		if (events.size() != 1) {
+			throw new ComcatException ("ComcatAccessor: Received more than one match, count = " + events.size());
+		}
+		
+		JsonEvent event = events.get(0);
+//		printJSON(event);
+
+		ObsEqkRupture rup = null;
+
+		try {
+			rup = eventToObsRup (event, wrapLon, extendedInfo);
+		} catch (Exception e) {
+			rup = null;
+		}
+		if (rup == null) {
+			throw new ComcatException ("ComcatAccessor: Unable to interpret returned data");
+		}
+		
+		return rup;
 	}
 	
 
@@ -298,6 +422,7 @@ public class ComcatAccessor {
 
 	
 	/**
+	 * [OLD VERSION]
 	 * Fetch all aftershocks of the given event. Returned list will not contain the mainshock
 	 * even if it matches the query.
 	 * @param mainshock = Mainshock.
@@ -311,7 +436,7 @@ public class ComcatAccessor {
 	 * Note: The mainshock parameter must be a return value from fetchEvent() above.
 	 * Note: As a special case, if maxDays == minDays, then the end time is the current time.
 	 */
-	public ObsEqkRupList fetchAftershocks(ObsEqkRupture mainshock, double minDays, double maxDays,
+	public ObsEqkRupList fetchAftershocks_old(ObsEqkRupture mainshock, double minDays, double maxDays,
 			double minDepth, double maxDepth, SphRegion region, boolean wrapLon) {
 		EventQuery query = new EventQuery();
 		
@@ -423,6 +548,330 @@ public class ComcatAccessor {
 
 
 
+	
+	/**
+	 * Fetch all aftershocks of the given event. Returned list will not contain the mainshock
+	 * even if it matches the query.
+	 * @param mainshock = Mainshock.
+	 * @param minDays = Start of time interval, in days after the mainshock.
+	 * @param maxDays = End of time interval, in days after the mainshock.
+	 * @param minDepth = Minimum depth, in km.  Comcat requires a value from -100 to +1000.
+	 * @param maxDepth = Minimum depth, in km.  Comcat requires a value from -100 to +1000.
+	 * @param region = Region to search.  Events not in this region are filtered out.
+	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
+	 * @return
+	 * Note: The mainshock parameter must be a return value from fetchEvent() above.
+	 * Note: As a special case, if maxDays == minDays, then the end time is the current time.
+	 */
+	public ObsEqkRupList fetchAftershocks(ObsEqkRupture mainshock, double minDays, double maxDays,
+			double minDepth, double maxDepth, SphRegion region, boolean wrapLon) {
+
+		long eventTime = mainshock.getOriginTime();
+		long startTime = eventTime + (long)(minDays*day_millis);
+		long endTime = eventTime + (long)(maxDays*day_millis);
+
+		String exclude_id = mainshock.getEventId();
+
+		return fetchEventList (exclude_id, startTime, endTime,
+								minDepth, maxDepth, region, wrapLon,
+								COMCAT_NO_MIN_MAG, COMCAT_MAX_LIMIT, COMCAT_MAX_CALLS);
+	}
+
+
+
+	
+	/**
+	 * Fetch all aftershocks of the given event. Returned list will not contain the mainshock
+	 * even if it matches the query.
+	 * @param mainshock = Mainshock.
+	 * @param minDays = Start of time interval, in days after the mainshock.
+	 * @param maxDays = End of time interval, in days after the mainshock.
+	 * @param minDepth = Minimum depth, in km.  Comcat requires a value from -100 to +1000.
+	 * @param maxDepth = Minimum depth, in km.  Comcat requires a value from -100 to +1000.
+	 * @param region = Region to search.  Events not in this region are filtered out.
+	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
+	 * @param minMag = Minimum magnitude, or -10.0 for no minimum.
+	 * @return
+	 * Note: The mainshock parameter must be a return value from fetchEvent() above.
+	 * Note: As a special case, if maxDays == minDays, then the end time is the current time.
+	 */
+	public ObsEqkRupList fetchAftershocks(ObsEqkRupture mainshock, double minDays, double maxDays,
+			double minDepth, double maxDepth, SphRegion region, boolean wrapLon, double minMag) {
+
+		long eventTime = mainshock.getOriginTime();
+		long startTime = eventTime + (long)(minDays*day_millis);
+		long endTime = eventTime + (long)(maxDays*day_millis);
+
+		String exclude_id = mainshock.getEventId();
+
+		return fetchEventList (exclude_id, startTime, endTime,
+								minDepth, maxDepth, region, wrapLon,
+								minMag, COMCAT_MAX_LIMIT, COMCAT_MAX_CALLS);
+	}
+
+
+
+	
+	/**
+	 * Fetch a list of events satisfying the given conditions.
+	 * @param exclude_id = An event id to exclude from the results, or null if none.
+	 * @param startTime = Start of time interval, in milliseconds after the epoch.
+	 * @param endTime = End of time interval, in milliseconds after the epoch.
+	 * @param minDepth = Minimum depth, in km.  Comcat requires a value from -100 to +1000.
+	 * @param maxDepth = Maximum depth, in km.  Comcat requires a value from -100 to +1000.
+	 * @param region = Region to search.  Events not in this region are filtered out.
+	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
+	 * @param minMag = Minimum magnitude, or -10.0 for no minimum.
+	 * @param limit_per_call = Maximum number of events to fetch in a single call to Comcat, or 0 for default.
+	 * @param max_calls = Maximum number of calls to ComCat, or 0 for default.
+	 * @return
+	 * Note: The mainshock parameter must be a return value from fetchEvent() above.
+	 * Note: As a special case, if endTime == startTime, then the end time is the current time.
+	 */
+	public ObsEqkRupList fetchEventList (String exclude_id, long startTime, long endTime,
+			double minDepth, double maxDepth, SphRegion region, boolean wrapLon,
+			double minMag, int limit_per_call, int max_calls) {
+
+		// Start a query
+
+		EventQuery query = new EventQuery();
+
+		// Insert depth into query
+
+		if (!( minDepth < maxDepth )) {
+			throw new IllegalArgumentException ("ComcatAccessor: Min depth must be less than max depth: minDepth = " + minDepth + ", maxDepth = " + maxDepth);
+		}
+		
+		query.setMinDepth(new BigDecimal(String.format("%.3f", minDepth)));
+		query.setMaxDepth(new BigDecimal(String.format("%.3f", maxDepth)));
+
+		// Insert time into query
+
+		long timeNow = System.currentTimeMillis();
+
+		if (!( startTime < timeNow )) {
+			throw new IllegalArgumentException ("ComcatAccessor: Start time must be less than time now: startTime = " + startTime + ", timeNow = " + timeNow);
+		}
+
+		if (!( startTime <= endTime )) {
+			throw new IllegalArgumentException ("ComcatAccessor: Start time must be less than end time: startTime = " + startTime + ", endTime = " + endTime);
+		}
+
+		query.setStartTime(new Date(startTime));
+
+		if (endTime == startTime) {
+			query.setEndTime(new Date(timeNow));
+		} else {
+			query.setEndTime(new Date(endTime));
+		}
+		
+		// If the region is a circle, use Comcat's circle query
+
+		if (region.isCircular()) {
+			query.setLatitude(new BigDecimal(String.format("%.5f", region.getCircleCenter().get_lat())));
+			query.setLongitude(new BigDecimal(String.format("%.5f", region.getCircleCenter().get_lon())));
+			query.setMaxRadius(new BigDecimal(String.format("%.5f", region.getCircleRadiusDeg())));
+		}
+
+		// Otherwise, use Comcat's rectangle query to search the bounding box of the region
+
+		else {
+			query.setMinLatitude(new BigDecimal(String.format("%.5f", region.getMinLat())));
+			query.setMaxLatitude(new BigDecimal(String.format("%.5f", region.getMaxLat())));
+			query.setMinLongitude(new BigDecimal(String.format("%.5f", region.getMinLon())));
+			query.setMaxLongitude(new BigDecimal(String.format("%.5f", region.getMaxLon())));
+		}
+
+		// Set a flag to indicate if we need to do region filtering
+
+		boolean f_region_filter = false;
+
+		if (!( region.isRectangular() || region.isCircular() )) {
+			f_region_filter = true;
+		}
+
+		// Insert minimum magnitude in the query
+
+		if (minMag >= -9.0) {
+			query.setMinMagnitude(new BigDecimal(String.format("%.3f", minMag)));
+		}
+
+		// Calculate our limit and insert it in the query
+
+		int my_limit = limit_per_call;
+
+		if (my_limit <= 0) {
+			my_limit = COMCAT_MAX_LIMIT;
+		}
+
+		query.setLimit(my_limit);
+
+		// Calculate our maximum number of calls
+
+		int my_max_calls = max_calls;
+
+		if (my_max_calls <= 0) {
+			my_max_calls = COMCAT_MAX_CALLS;
+		}
+
+		// Initialize the offset but don't insert in the query yet
+
+		int offset = COMCAT_INIT_INDEX;
+
+		// Initialize HTTP statuses
+
+		http_statuses.clear();
+
+		// Set up the event id filter, to remove duplicate events and our excluded event
+
+		HashSet<String> event_filter = new HashSet<String>();
+
+		if (exclude_id != null) {
+			event_filter.add (exclude_id);
+		}
+
+		// The list of ruptures we are going to build
+
+		ObsEqkRupList rups = new ObsEqkRupList();
+
+		// Loop until we reach our maximum number of calls
+
+		for (int n_call = 1; ; ++n_call) {
+
+			// If not at start, insert offset into query
+
+			if (offset != COMCAT_INIT_INDEX) {
+				query.setOffset(offset);
+			}
+
+			// Display the query URL
+
+			if (D) {
+				try {
+					System.out.println(service.getUrl(query, Format.GEOJSON));
+				} catch (MalformedURLException e) {
+					e.printStackTrace();
+				}
+			}
+
+			// Call Comcat to get the list of events satisfying the query
+
+			List<JsonEvent> events;
+
+			try {
+				events = service.getEvents(query);
+
+			} catch (IOException e) {
+				// If the HTTP status is unknown, then we don't know if this is error or not-found, so we treat it as not-found
+				if (get_http_status_code() == -1) {
+					events = new ArrayList<JsonEvent>();
+				}
+				// Otherwise it's an I/O error
+				else {
+					http_statuses.add (new Integer(get_http_status_code()));
+					throw new ComcatException ("ComcatAccessor: I/O error while accessing Comcat", e);
+				}
+
+			} catch (Exception e) {
+				// An exception not an I/O exception probably indicates bad data received
+				http_statuses.add (new Integer(get_http_status_code()));
+				throw new ComcatException ("ComcatAccessor: Data error while accessing Comcat", e);
+			}
+
+			http_statuses.add (new Integer(get_http_status_code()));
+
+			// Display the number of events received
+
+			int count = events.size();
+			System.out.println ("Count of events received = " + count);
+
+			// Loop over returned events
+
+			int filtered_count = 0;
+
+			for (JsonEvent event : events) {
+
+				// Convert to our form
+
+				ObsEqkRupture rup = null;
+
+				try {
+					rup = eventToObsRup (event, wrapLon, false);
+				} catch (Exception e) {
+					rup = null;
+				}
+
+				// Skip this event if we couldn't convert it (not clear this is the right thing to do)
+
+				if (rup == null) {
+					continue;
+				}
+
+				// Do region filtering if required
+
+				if (f_region_filter) {
+					if (!( region.contains(rup.getHypocenterLocation()) )) {
+						continue;
+					}
+				}
+
+				// Do event id filtering (must be the last filter done)
+
+				if (!( event_filter.add (rup.getEventId()) )) {
+					continue;
+				}
+
+				// Add the event to our list
+
+				rups.add(rup);
+				++filtered_count;
+			}
+
+			// Display the number of events that survived filtering
+
+			System.out.println ("Count of events after filtering = " + filtered_count);
+
+			// Advance the offset
+
+			offset += count;
+
+			// Stop if we didn't get all we asked for
+
+			if (count < my_limit) {
+				break;
+			}
+
+			// If reached the maximum permitted number of calls, it's an error
+
+			if (n_call >= my_max_calls) {
+				throw new ComcatException ("ComcatAccessor: Exceeded maximum number of Comcat calls in a single operation");
+			}
+
+		}
+
+		// Display final result
+		
+		if (D) System.out.println("Total number of events returned = " + rups.size());
+		
+		return rups;
+	}
+
+
+
+
+	// Same, with defaults for limit_per_call and max_calls.
+
+	public ObsEqkRupList fetchEventList (String exclude_id, long startTime, long endTime,
+			double minDepth, double maxDepth, SphRegion region, boolean wrapLon,
+			double minMag) {
+
+		return fetchEventList (exclude_id, startTime, endTime,
+			minDepth, maxDepth, region, wrapLon,
+			minMag, COMCAT_MAX_LIMIT, COMCAT_MAX_CALLS);
+	}
+
+
+
 
 	// [DEPRECATED]
 	// This function should be private.  It is public only to avoid breaking class
@@ -441,7 +890,7 @@ public class ComcatAccessor {
 	// If wrapLon is false, longitudes range from -180 to +180.
 	// If wrapLon is true, longitudes range from 0 to +360.
 	// If extendedInfo is true, extended information is added to the ObsEqkRupture,
-	//  which presently is the place description.
+	//  which presently is the place description, list of ids, network, and event code.
 	// The return value can be null if the conversion could not be performed.
 	
 	private static ObsEqkRupture eventToObsRup(JsonEvent event, boolean wrapLon, boolean extendedInfo) {
@@ -473,10 +922,259 @@ public class ComcatAccessor {
 		
 		if (extendedInfo) {
 			// adds the place description ("10km from wherever"). Needed for ETAS_AftershockStatistics forecast document -NVDE 
-			rup.addParameter(new StringParameter("description", event.getPlace()));
+			rup.addParameter(new StringParameter(PARAM_NAME_DESCRIPTION, event.getPlace()));
+			// adds the event id list, which can be used to resolve duplicates
+			rup.addParameter(new StringParameter(PARAM_NAME_IDLIST, event.getIds()));
+			// adds the seismic network, which is needed for reporting to PDL
+			rup.addParameter(new StringParameter(PARAM_NAME_NETWORK, event.getNet()));
+			// adds the event code, which is needed for reporting to PDL
+			rup.addParameter(new StringParameter(PARAM_NAME_CODE, event.getCode()));
 		}
 		
 		return rup;
+	}
+
+
+
+
+	// Get the HTTP status code from the last operation, or -1 if unknown, or -2 if unable to connect.
+
+	public int get_http_status_code () {
+		if (service instanceof ComcatEventWebService) {
+			return ((ComcatEventWebService)service).get_http_status_code();
+		}
+		return -1;
+	}
+
+
+	// Get the number of stored HTTP statuses available, for the last multi-event fetch.
+
+	public int get_http_status_count () {
+		return http_statuses.size();
+	}
+
+
+	// Get the i-th stored HTTP status, for the last multi-event fetch.
+
+	public int get_http_status_code (int i) {
+		return http_statuses.get(i).intValue();
+	}
+
+
+
+
+	//----- Testing -----
+
+	public static void main(String[] args) {
+
+		// There needs to be at least one argument, which is the subcommand
+
+		if (args.length < 1) {
+			System.err.println ("ComcatAccessor : Missing subcommand");
+			return;
+		}
+
+
+
+
+		// Subcommand : Test #1
+		// Command format:
+		//  test1  event_id
+		// Fetch information for an event, and display it.
+
+		if (args[0].equalsIgnoreCase ("test1")) {
+
+			// One additional argument
+
+			if (args.length != 2) {
+				System.err.println ("ComcatAccessor : Invalid 'test1' subcommand");
+				return;
+			}
+
+			String event_id = args[1];
+
+			try {
+
+				// Say hello
+
+				System.out.println ("Fetching event: " + event_id);
+
+				// Create the accessor
+
+				ComcatAccessor accessor = new ComcatAccessor();
+
+				// Get the rupture
+
+				ObsEqkRupture rup = accessor.fetchEvent (event_id, false, true);
+
+				// Display its information
+
+				if (rup == null) {
+					System.out.println ("Null return from fetchEvent");
+					System.out.println ("http_status = " + accessor.get_http_status_code());
+					return;
+				}
+
+				String rup_event_id = rup.getEventId();
+				long rup_time = rup.getOriginTime();
+				double rup_mag = rup.getMag();
+				Location hypo = rup.getHypocenterLocation();
+				double rup_lat = hypo.getLatitude();
+				double rup_lon = hypo.getLongitude();
+				double rup_depth = hypo.getDepth();
+
+				System.out.println ("rup_event_id = " + rup_event_id);
+				System.out.println ("rup_time = " + rup_time + " (" + SimpleUtils.time_to_string(rup_time) + ")");
+				System.out.println ("rup_mag = " + rup_mag);
+				System.out.println ("rup_lat = " + rup_lat);
+				System.out.println ("rup_lon = " + rup_lon);
+				System.out.println ("rup_depth = " + rup_depth);
+
+				ListIterator<Parameter<?>> iter = rup.getAddedParametersIterator();
+				if (iter != null) {
+					while (iter.hasNext()) {
+						Parameter<?> param = iter.next();
+						System.out.println (param.getName() + " = " + param.getValue());
+					}
+				}
+
+				System.out.println ("http_status = " + accessor.get_http_status_code());
+
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+
+
+
+		// Subcommand : Test #2
+		// Command format:
+		//  test2  event_id  min_days  max_days  radius_km  min_mag  limit_per_call
+		// Fetch information for an event, and display it.
+		// Then fetch the event list for a circle surrounding the hypocenter,
+		// for the specified interval in days after the origin time,
+		// excluding the event itself.
+		// The adjustable limit per call can test the multi-fetch logic.
+
+		if (args[0].equalsIgnoreCase ("test2")) {
+
+			// Six additional arguments
+
+			if (args.length != 7) {
+				System.err.println ("ComcatAccessor : Invalid 'test2' subcommand");
+				return;
+			}
+
+			try {
+
+				String event_id = args[1];
+				double min_days = Double.parseDouble (args[2]);
+				double max_days = Double.parseDouble (args[3]);
+				double radius_km = Double.parseDouble (args[4]);
+				double min_mag = Double.parseDouble (args[5]);
+				int limit_per_call = Integer.parseInt(args[6]);
+
+				// Say hello
+
+				System.out.println ("Fetching event: " + event_id);
+
+				// Create the accessor
+
+				ComcatAccessor accessor = new ComcatAccessor();
+
+				// Get the rupture
+
+				ObsEqkRupture rup = accessor.fetchEvent (event_id, false, true);
+
+				// Display its information
+
+				if (rup == null) {
+					System.out.println ("Null return from fetchEvent");
+					System.out.println ("http_status = " + accessor.get_http_status_code());
+					return;
+				}
+
+				String rup_event_id = rup.getEventId();
+				long rup_time = rup.getOriginTime();
+				double rup_mag = rup.getMag();
+				Location hypo = rup.getHypocenterLocation();
+				double rup_lat = hypo.getLatitude();
+				double rup_lon = hypo.getLongitude();
+				double rup_depth = hypo.getDepth();
+
+				System.out.println ("rup_event_id = " + rup_event_id);
+				System.out.println ("rup_time = " + rup_time + " (" + SimpleUtils.time_to_string(rup_time) + ")");
+				System.out.println ("rup_mag = " + rup_mag);
+				System.out.println ("rup_lat = " + rup_lat);
+				System.out.println ("rup_lon = " + rup_lon);
+				System.out.println ("rup_depth = " + rup_depth);
+
+				ListIterator<Parameter<?>> iter = rup.getAddedParametersIterator();
+				if (iter != null) {
+					while (iter.hasNext()) {
+						Parameter<?> param = iter.next();
+						System.out.println (param.getName() + " = " + param.getValue());
+					}
+				}
+
+				System.out.println ("http_status = " + accessor.get_http_status_code());
+
+				// Say hello
+
+				System.out.println ("Fetching event list");
+				System.out.println ("min_days = " + min_days);
+				System.out.println ("max_days = " + max_days);
+				System.out.println ("radius_km = " + radius_km);
+				System.out.println ("min_mag = " + min_mag);
+				System.out.println ("limit_per_call = " + limit_per_call);
+
+				// Construct the Region
+
+				SphRegionCircle region = new SphRegionCircle (new SphLatLon(hypo), radius_km);
+
+				// Calculate the times
+
+				long startTime = rup_time + (long)(min_days*day_millis);
+				long endTime = rup_time + (long)(max_days*day_millis);
+
+				// Call Comcat
+
+				double minDepth = 0.0;
+				double maxDepth = 700.0;
+				boolean wrapLon = false;
+				int max_calls = 0;
+
+				ObsEqkRupList rup_list = accessor.fetchEventList (rup_event_id, startTime, endTime,
+						minDepth, maxDepth, region, wrapLon,
+						min_mag, limit_per_call, max_calls);
+
+				// Display the information
+
+				System.out.println ("Events returned by fetchEventList = " + rup_list.size());
+
+				int n_status = accessor.get_http_status_count();
+				for (int i = 0; i < n_status; ++i) {
+					System.out.println ("http_status[" + i + "] = " + accessor.get_http_status_code(i));
+				}
+
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+
+
+
+		// Unrecognized subcommand.
+
+		System.err.println ("ComcatAccessor : Unrecognized subcommand : " + args[0]);
+		return;
+
 	}
 
 }
