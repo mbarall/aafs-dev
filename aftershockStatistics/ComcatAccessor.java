@@ -18,6 +18,8 @@ import java.util.ListIterator;
 import java.util.Properties;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.HashMap;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -36,12 +38,26 @@ import com.google.common.base.Preconditions;
 
 import java.io.IOException;
 import java.io.FileNotFoundException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownServiceException;
+import java.util.zip.ZipException;
 
 import scratch.aftershockStatistics.util.SphLatLon;
 import scratch.aftershockStatistics.util.SphRegion;
 import scratch.aftershockStatistics.util.SphRegionCircle;
 import scratch.aftershockStatistics.util.SimpleUtils;
 
+
+/**
+ * Class for making queries to Comcat.
+ * Original author unknown.
+ * Modified by: Michael Barall.
+ *
+ * WARNING TO USERS!
+ * Do not use the functions marked [DEPRECATED] or [OLD VERSION].
+ * These functions are known to have problems.
+ * These functions have been retained for a transition period until they can be removed.
+ */
 public class ComcatAccessor {
 	
 	private static final boolean D = true;
@@ -62,6 +78,9 @@ public class ComcatAccessor {
 	}
 
 
+	// The number of milliseconds in a day.
+	
+	public static final double day_millis = 24d*60d*60d*1000d;
 
 	// Parameter name for the place description.
 
@@ -214,6 +233,10 @@ public class ComcatAccessor {
 	 */
 	public ObsEqkRupture fetchEvent (String eventID, boolean wrapLon, boolean extendedInfo) {
 
+		// Initialize HTTP statuses
+
+		http_statuses.clear();
+
 		// Set up query on event id
 
 		EventQuery query = new EventQuery();
@@ -221,23 +244,7 @@ public class ComcatAccessor {
 
 		// Call Comcat to get the list of events satisfying the query
 
-		List<JsonEvent> events;
-
-		try {
-			events = service.getEvents(query);
-
-		} catch (IOException e) {
-			// If the HTTP status is unknown, then we don't know if this is error or not-found, so we treat it as not-found
-			if (get_http_status_code() == -1) {
-				return null;
-			}
-			// Otherwise it's an I/O error
-			throw new ComcatException ("ComcatAccessor: I/O error while accessing Comcat", e);
-
-		} catch (Exception e) {
-			// An exception not an I/O exception probably indicates bad data received
-			throw new ComcatException ("ComcatAccessor: Data error while accessing Comcat", e);
-		}
+		List<JsonEvent> events = getEventsFromComcat (query);
 
 		// If no events received, then not found
 
@@ -254,15 +261,14 @@ public class ComcatAccessor {
 		JsonEvent event = events.get(0);
 //		printJSON(event);
 
+		// Convert event to our form, treating any failure as if nothing was returned
+
 		ObsEqkRupture rup = null;
 
 		try {
 			rup = eventToObsRup (event, wrapLon, extendedInfo);
 		} catch (Exception e) {
 			rup = null;
-		}
-		if (rup == null) {
-			throw new ComcatException ("ComcatAccessor: Unable to interpret returned data");
 		}
 		
 		return rup;
@@ -299,8 +305,6 @@ public class ComcatAccessor {
 			}
 		}
 	}
-	
-	public static final double day_millis = 24d*60d*60d*1000d;
 
 
 
@@ -632,6 +636,10 @@ public class ComcatAccessor {
 			double minDepth, double maxDepth, SphRegion region, boolean wrapLon,
 			double minMag, int limit_per_call, int max_calls) {
 
+		// Initialize HTTP statuses
+
+		http_statuses.clear();
+
 		// Start a query
 
 		EventQuery query = new EventQuery();
@@ -718,10 +726,6 @@ public class ComcatAccessor {
 
 		int offset = COMCAT_INIT_INDEX;
 
-		// Initialize HTTP statuses
-
-		http_statuses.clear();
-
 		// Set up the event id filter, to remove duplicate events and our excluded event
 
 		HashSet<String> event_filter = new HashSet<String>();
@@ -756,29 +760,7 @@ public class ComcatAccessor {
 
 			// Call Comcat to get the list of events satisfying the query
 
-			List<JsonEvent> events;
-
-			try {
-				events = service.getEvents(query);
-
-			} catch (IOException e) {
-				// If the HTTP status is unknown, then we don't know if this is error or not-found, so we treat it as not-found
-				if (get_http_status_code() == -1) {
-					events = new ArrayList<JsonEvent>();
-				}
-				// Otherwise it's an I/O error
-				else {
-					http_statuses.add (new Integer(get_http_status_code()));
-					throw new ComcatException ("ComcatAccessor: I/O error while accessing Comcat", e);
-				}
-
-			} catch (Exception e) {
-				// An exception not an I/O exception probably indicates bad data received
-				http_statuses.add (new Integer(get_http_status_code()));
-				throw new ComcatException ("ComcatAccessor: Data error while accessing Comcat", e);
-			}
-
-			http_statuses.add (new Integer(get_http_status_code()));
+			List<JsonEvent> events = getEventsFromComcat (query);
 
 			// Display the number of events received
 
@@ -891,7 +873,9 @@ public class ComcatAccessor {
 	// If wrapLon is true, longitudes range from 0 to +360.
 	// If extendedInfo is true, extended information is added to the ObsEqkRupture,
 	//  which presently is the place description, list of ids, network, and event code.
-	// The return value can be null if the conversion could not be performed.
+	// If the conversion could not be performed, then the function either returns null
+	//  or throws an exception.  Note that the event.getXXXXX functions can return null,
+	//  which will lead to NullPointerException being thrown.
 	
 	private static ObsEqkRupture eventToObsRup(JsonEvent event, boolean wrapLon, boolean extendedInfo) {
 		double lat = event.getLatitude().doubleValue();
@@ -914,7 +898,7 @@ public class ComcatAccessor {
 		try{
 			mag = event.getMag().doubleValue();
 		}catch(Exception e){
-			System.out.println(event.toString());
+			//System.out.println(event.toString());
 			return null;
 		}
 		ObsEqkRupture rup = new ObsEqkRupture(event.getEventId().toString(),
@@ -958,6 +942,247 @@ public class ComcatAccessor {
 
 	public int get_http_status_code (int i) {
 		return http_statuses.get(i).intValue();
+	}
+	
+
+
+
+	/**
+	 * Send a query to Comcat and return the matching list of events.
+	 * @param query = Query to perform.
+	 * @return
+	 * Returns a list of events matching the query.
+	 * If nothing matches the query, returns an empty list.
+	 * The return is never null.
+	 * If there is an error, throws ComcatException.
+	 * The operation's HTTP status is added to the list of status codes.
+	 *
+	 * Implementation note:
+	 * With Comcat, it is necessary to examine the HTTP status code to accurately tell
+	 * the difference between an I/O error and a query that returns no data.  The
+	 * ComcatEventWebService provider attempts to do so.  If HTTP status is not available
+	 * (because the provider is not ComcatEventWebService, or the protocol stack did not
+	 * obtain the HTTP status), this function makes an attempt to tell the difference,
+	 * but the attempt does not succeed in all circumstances.
+	 */
+	protected List<JsonEvent> getEventsFromComcat (EventQuery query) {
+
+		List<JsonEvent> events = null;
+
+		try {
+			events = service.getEvents(query);
+
+		} catch (SocketTimeoutException e) {
+			// This exception (subclass of IOException) indicates an I/O error.
+			http_statuses.add (new Integer(get_http_status_code()));
+			throw new ComcatException ("ComcatAccessor: I/O error (SocketTimeoutException) while accessing Comcat", e);
+
+		} catch (UnknownServiceException e) {
+			// This exception (subclass of IOException) indicates an I/O error.
+			http_statuses.add (new Integer(get_http_status_code()));
+			throw new ComcatException ("ComcatAccessor: I/O error (UnknownServiceException) while accessing Comcat", e);
+
+		} catch (ZipException e) {
+			// This exception (subclass of IOException) indicates a data error.
+			http_statuses.add (new Integer(get_http_status_code()));
+			throw new ComcatException ("ComcatAccessor: Data error (ZipException) while accessing Comcat", e);
+
+		} catch (FileNotFoundException e) {
+			// If the HTTP status is unknown, then we don't know if this is error or not-found.
+			// EventWebService typically throws this exception when an eventID is not found (in response
+			// to Comcat HTTP status 404), so we treat it as not-found if the HTTP status is unknown.
+			if (get_http_status_code() == -1) {
+				events = new ArrayList<JsonEvent>();
+			}
+			// Otherwise it's an I/O error
+			else {
+				http_statuses.add (new Integer(get_http_status_code()));
+				throw new ComcatException ("ComcatAccessor: I/O error (FileNotFoundException) while accessing Comcat", e);
+			}
+
+		} catch (IOException e) {
+			// If the HTTP status is unknown, then we don't know if this is error or not-found.
+			// EventWebService typically throws this exception when an eventID refers to a deleted event
+			// (in response to Comcat HTTP status 409), but we nonetheless treat it as an I/O error.
+			http_statuses.add (new Integer(get_http_status_code()));
+			throw new ComcatException ("ComcatAccessor: I/O error (IOException) while accessing Comcat", e);
+
+		} catch (Exception e) {
+			// An exception not an I/O exception probably indicates bad data received.
+			http_statuses.add (new Integer(get_http_status_code()));
+			throw new ComcatException ("ComcatAccessor: Data error (Exception) while accessing Comcat", e);
+		}
+
+		// Add the HTTP status to the list
+
+		http_statuses.add (new Integer(get_http_status_code()));
+
+		// The event list should not be null, but if it is, replace it with an empty List
+
+		if (events == null) {
+			events = new ArrayList<JsonEvent>();
+		}
+
+		// Return the list of events
+
+		return events;
+	}
+
+
+
+
+	// Option codes for extendedInfoToMap.
+
+	public static final int EITMOPT_NO_CHANGE = 0;			// Make no changes, include null and empty strings in map
+	public static final int EITMOPT_OMIT_NULL = 1;			// Omit null strings from the map, but keep empty strings
+	public static final int EITMOPT_OMIT_EMPTY = 2;			// Omit empty strings from the map, but keep null strings
+	public static final int EITMOPT_OMIT_NULL_EMPTY = 3;	// Omit both null strings and empty strings from the map
+	public static final int EITMOPT_NULL_TO_EMPTY = 4;		// Convert null strings to empty strings
+	public static final int EITMOPT_EMPTY_TO_NULL = 5;		// Convert empty strings to null strings
+
+
+	/**
+	 * Extract the extended info from a ObsEqkRupture, and put all the values into a Map.
+	 * @param rup = The ObsEqkRupture to examine.
+	 * @param option = An option code, as listed above.
+	 * @return
+	 * Returns a Map whose keys are the the names of parameters (PARAM_NAME_XXXXX as
+	 * defined above), and whose values are the strings returned by Comcat.
+	 * Any non-string parameters are converted to strings.
+	 */
+	public static Map<String, String> extendedInfoToMap (ObsEqkRupture rup, int option) {
+		HashMap<String, String> eimap = new HashMap<String, String>();
+
+		// Loop over parameters containing extended info
+
+		ListIterator<Parameter<?>> iter = rup.getAddedParametersIterator();
+		if (iter != null) {
+			while (iter.hasNext()) {
+				Parameter<?> param = iter.next();
+
+				// Get the name and value of the parameter
+
+				String key = param.getName();
+				String value = null;
+				Object o = param.getValue();
+				if (o != null) {
+					value = o.toString();
+				}
+
+				// Handle null strings
+
+				if (value == null) {
+					switch (option) {
+
+					case EITMOPT_OMIT_NULL:
+					case EITMOPT_OMIT_NULL_EMPTY:
+						continue;
+
+					case EITMOPT_NULL_TO_EMPTY:
+						value = "";
+						break;
+					}
+				}
+
+				// Handle empty strings
+
+				else if (value.isEmpty()) {
+					switch (option) {
+
+					case EITMOPT_OMIT_EMPTY:
+					case EITMOPT_OMIT_NULL_EMPTY:
+						continue;
+
+					case EITMOPT_EMPTY_TO_NULL:
+						value = null;
+						break;
+					}
+				}
+
+				// Add to the map
+
+				eimap.put (key, value);
+			}
+		}
+
+		return eimap;
+	}
+
+
+
+
+	/**
+	 * Convert an id list received from Comcat into a list of strings, each containing a single id.
+	 * @param ids = The ids received from Comcat.  Can be null or empty if none received.
+	 * @param preferred_id = A preferred id.  Can be null or empty if none desired.
+	 * @return
+	 * Returns a List of strings, each of which is an event id.
+	 * The ids received from Comcat are a comma-separated list of event ids, with commas at
+	 * the beginning and end of the list, for example: ",us1000edv8,hv70203677,".
+	 * It is not clear if the ordering of ids in the list has any significance.
+	 * This function treats the initial and final commas as optional, and allows spaces before
+	 * and after a comma (which are removed).
+	 * If preferred_id is non-null and non-empty, then preferred_id appears as the first
+	 * item in the list (whether or not it also appears in ids).
+	 * Except for preferred_id, the event ids are listed in the same order they appear in ids.
+	 */
+	public static List<String> idsToList (String ids, String preferred_id) {
+		ArrayList<String> idlist = new ArrayList<String>();
+
+		// If there is a preferred id, make it the first element in the list
+
+		if (preferred_id != null) {
+			if (!( preferred_id.isEmpty() )) {
+				idlist.add (preferred_id);
+			}
+		}
+
+		// If we have a list of ids ...
+
+		if (ids != null) {
+
+			// Break the ids into individual events
+
+			int n = ids.length();
+			int begin = 0;		// Beginning of the current substring
+
+			while (begin < n) {
+
+				// The end of the current substring is the next comma, or the end of the string
+
+				int end = ids.indexOf (",", begin);
+				if (end < 0) {
+					end = n;
+				}
+
+				// The event id is the current substring, with leading and trailing spaces removed
+
+				String id = ids.substring (begin, end).trim();
+
+				// If it's non-empty ...
+
+				if (!( id.isEmpty() )) {
+				
+					// If it doesn't match the preferred id ...
+					// (Note that equalsIgnoreCase returns false if the argument is null)
+
+					if (!( id.equalsIgnoreCase (preferred_id) )) {
+					
+						// Add it to the list of ids
+
+						idlist.add (id);
+					}
+				}
+			
+				// Advance to the next candidate substring, which begins after the comma
+
+				begin = end + 1;
+			}
+		}
+
+		// Return the List
+
+		return idlist;
 	}
 
 
@@ -1039,6 +1264,18 @@ public class ComcatAccessor {
 				}
 
 				System.out.println ("http_status = " + accessor.get_http_status_code());
+
+				Map<String, String> eimap = extendedInfoToMap (rup, EITMOPT_NULL_TO_EMPTY);
+
+				for (String key : eimap.keySet()) {
+					System.out.println ("EI Map: " + key + " = " + eimap.get(key));
+				}
+
+				List<String> idlist = idsToList (eimap.get (PARAM_NAME_IDLIST), rup_event_id);
+
+				for (String id : idlist) {
+					System.out.println ("ID List: " + id);
+				}
 
             } catch (Exception e) {
                 e.printStackTrace();
