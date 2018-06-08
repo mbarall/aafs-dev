@@ -47,6 +47,8 @@ import scratch.aftershockStatistics.util.SphRegion;
 import scratch.aftershockStatistics.util.SphRegionCircle;
 import scratch.aftershockStatistics.util.SimpleUtils;
 
+import scratch.aftershockStatistics.aafs.ServerConfig;
+
 
 /**
  * Class for making queries to Comcat.
@@ -54,7 +56,7 @@ import scratch.aftershockStatistics.util.SimpleUtils;
  * Modified by: Michael Barall.
  *
  * WARNING TO USERS!
- * Do not use the functions marked [DEPRECATED] or [OLD VERSION].
+ * Do not use the functions marked [DEPRECATED].
  * These functions are known to have problems.
  * These functions have been retained for a transition period until they can be removed.
  */
@@ -67,9 +69,13 @@ public class ComcatAccessor {
 	protected ArrayList<Integer> http_statuses;
 	
 	public ComcatAccessor() {
+
+		ServerConfig server_config = new ServerConfig();
+
 		try {
 			//service = new EventWebService(new URL("https://earthquake.usgs.gov/fdsnws/event/1/"));
-			service = new ComcatEventWebService(new URL("https://earthquake.usgs.gov/fdsnws/event/1/"));
+			//service = new ComcatEventWebService(new URL("https://earthquake.usgs.gov/fdsnws/event/1/"));
+			service = new ComcatEventWebService(new URL(server_config.get_comcat_url()));
 		} catch (MalformedURLException e) {
 			ExceptionUtils.throwAsRuntimeException(e);
 		}
@@ -177,45 +183,6 @@ public class ComcatAccessor {
 	 */
 	public ObsEqkRupture fetchEvent(String eventID, boolean wrapLon) {
 		return fetchEvent(eventID, wrapLon, true);
-	}
-	
-
-
-
-	/**
-	 * [OLD VERSION]
-	 * Fetches an event with the given ID, e.g. "ci37166079"
-	 * @param eventID = Earthquake event id.
-	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
-	 * @param extendedInfo = True to return extended information, see eventToObsRup below.
-	 * @return
-	 * The return value can be null if the event could not be obtained.
-	 * A null return may indicate a temporary condition (e.g., Comcat not responding) or a
-	 * permanent condition (e.g., event id not recognized).
-	 */
-	public ObsEqkRupture fetchEvent_old(String eventID, boolean wrapLon, boolean extendedInfo) {
-		EventQuery query = new EventQuery();
-		query.setEventId(eventID);
-		List<JsonEvent> events;
-		try {
-			events = service.getEvents(query);
-		} catch (FileNotFoundException e) {
-			// If ComCat does not recognize the eventID, ComCat returns HTTP error 404, which appears here as FileNotFoundException.
-			return null;
-		} catch (IOException e) {
-			// If the eventID has been deleted from ComCat, ComCat returns HTTP error 409, which appears here as IOException.
-			return null;
-		} catch (Exception e) {
-			throw ExceptionUtils.asRuntimeException(e);
-		}
-		if (events.isEmpty())
-			return null;
-		Preconditions.checkState(events.size() == 1, "More that 1 match? "+events.size());
-		
-		JsonEvent event = events.get(0);
-//		printJSON(event);
-		
-		return eventToObsRup(event, wrapLon, extendedInfo);
 	}
 	
 
@@ -426,134 +393,6 @@ public class ComcatAccessor {
 
 	
 	/**
-	 * [OLD VERSION]
-	 * Fetch all aftershocks of the given event. Returned list will not contain the mainshock
-	 * even if it matches the query.
-	 * @param mainshock = Mainshock.
-	 * @param minDays = Start of time interval, in days after the mainshock.
-	 * @param maxDays = End of time interval, in days after the mainshock.
-	 * @param minDepth = Minimum depth, in km.  Comcat requires a value from -100 to +1000.
-	 * @param maxDepth = Minimum depth, in km.  Comcat requires a value from -100 to +1000.
-	 * @param region = Region to search.  Events not in this region are filtered out.
-	 * @param wrapLon = Desired longitude range: false = -180 to 180; true = 0 to 360.
-	 * @return
-	 * Note: The mainshock parameter must be a return value from fetchEvent() above.
-	 * Note: As a special case, if maxDays == minDays, then the end time is the current time.
-	 */
-	public ObsEqkRupList fetchAftershocks_old(ObsEqkRupture mainshock, double minDays, double maxDays,
-			double minDepth, double maxDepth, SphRegion region, boolean wrapLon) {
-		EventQuery query = new EventQuery();
-		
-		Preconditions.checkState(minDepth < maxDepth, "Min depth must be less than max depth");
-		query.setMinDepth(new BigDecimal(String.format("%.3f", minDepth)));
-		query.setMaxDepth(new BigDecimal(String.format("%.3f", maxDepth)));
-		
-		Preconditions.checkState(minDays <= maxDays, "Min days must be less than max days");
-		// time zones shouldn't be an issue since we're just adding to the original catalog time, whatever
-		// time zone that is in.
-		long eventTime = mainshock.getOriginTime();
-		long startTime = eventTime + (long)(minDays*day_millis);
-		long endTime = eventTime + (long)(maxDays*day_millis);
-		query.setStartTime(new Date(startTime));
-		if(endTime==startTime)
-			endTime=Instant.now().toEpochMilli();
-		query.setEndTime(new Date(endTime));
-		
-		Preconditions.checkState(startTime < System.currentTimeMillis(), "Aftershock fetch start time is after now!");
-		
-		// If the region is a circle, use Comcat's circle query
-
-		if (region.isCircular()) {
-			query.setLatitude(new BigDecimal(String.format("%.5f", region.getCircleCenter().get_lat())));
-			query.setLongitude(new BigDecimal(String.format("%.5f", region.getCircleCenter().get_lon())));
-			query.setMaxRadius(new BigDecimal(String.format("%.5f", region.getCircleRadiusDeg())));
-		}
-
-		// Otherwise, use Comcat's rectangle query to search the bounding box of the region
-
-		else {
-			query.setMinLatitude(new BigDecimal(String.format("%.5f", region.getMinLat())));
-			query.setMaxLatitude(new BigDecimal(String.format("%.5f", region.getMaxLat())));
-			query.setMinLongitude(new BigDecimal(String.format("%.5f", region.getMinLon())));
-			query.setMaxLongitude(new BigDecimal(String.format("%.5f", region.getMaxLon())));
-		}
-
-		query.setLimit(20000);
-		List<JsonEvent> events;
-		int count=20000;
-		ObsEqkRupList rups = new ObsEqkRupList();
-		Date latest=new Date(endTime);
-		Date endTimeStamp;
-		do{
-			endTimeStamp=latest;
-			query.setEndTime(latest);
-			if (D)
-				try {
-					System.out.println(service.getUrl(query, Format.GEOJSON));
-				} catch (MalformedURLException e) {
-					e.printStackTrace();
-				}
-
-			try {
-				events = service.getEvents(query);
-				count = events.size();
-			} catch (FileNotFoundException e) {
-				events = null;
-				count = 0;
-			} catch (IOException e) {
-				events = null;
-				count = 0;
-			} catch (Exception e) {
-				throw ExceptionUtils.asRuntimeException(e);
-			}
-
-			System.out.println(count);
-
-			if (count > 0) {
-				for (JsonEvent event : events) {
-					ObsEqkRupture rup = eventToObsRup(event, wrapLon, false);
-					if (rup !=null)
-						rups.add(rup);
-				}
-			}
-			rups.sortByOriginTime();
-			if(count==0)
-				break;
-			latest=rups.get(0).getOriginTimeCal().getTime();
-		}while(count==20000 && endTimeStamp.compareTo(latest)!=0);
-
-		// Sort by event id, and then scan the list to remove duplicates
-
-		Collections.sort(rups, new ObsEqkRupEventIdComparator());
-		ObsEqkRupList delrups=new ObsEqkRupList();
-		ObsEqkRupture previous =null;
-		for (ObsEqkRupture rup : rups) {
-			if (rup.getEventId().equals(mainshock.getEventId()) || (previous!=null && rup.getEventId().equals(previous.getEventId()))) {
-				//if (D) System.out.println("Removing mainshock (M="+rup.getMag()+") from aftershock list");
-				delrups.add(rup);
-			}
-		}
-		rups.removeAll(delrups);
-
-		// If region is neither rectangular or circular, scan list and remove ruptures not in our region
-		// TODO: Using rups.remove(i) is very inefficient for a large list
-
-		if (!( region.isRectangular() || region.isCircular() )) {
-			if (D) System.out.println("Fetched "+rups.size()+" events before region filtering");
-			for (int i=rups.size(); --i>=0;)
-				if (!region.contains(rups.get(i).getHypocenterLocation()))
-					rups.remove(i);
-		}
-		
-		if (D) System.out.println("Returning "+rups.size()+" aftershocks");
-		
-		return rups;
-	}
-
-
-
-	
-	/**
 	 * Fetch all aftershocks of the given event. Returned list will not contain the mainshock
 	 * even if it matches the query.
 	 * @param mainshock = Mainshock.
@@ -629,7 +468,6 @@ public class ComcatAccessor {
 	 * @param limit_per_call = Maximum number of events to fetch in a single call to Comcat, or 0 for default.
 	 * @param max_calls = Maximum number of calls to ComCat, or 0 for default.
 	 * @return
-	 * Note: The mainshock parameter must be a return value from fetchEvent() above.
 	 * Note: As a special case, if endTime == startTime, then the end time is the current time.
 	 */
 	public ObsEqkRupList fetchEventList (String exclude_id, long startTime, long endTime,

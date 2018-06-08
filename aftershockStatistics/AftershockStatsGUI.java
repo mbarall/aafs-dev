@@ -294,9 +294,9 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 		maxLatParam = new DoubleParameter("Max Lat", -90d, 90d, new Double(36d));
 		minLonParam = new DoubleParameter("Min Lon", -180d, 180d, new Double(32d));
 		maxLonParam = new DoubleParameter("Max Lon", -180d, 180d, new Double(36d));
-		minDepthParam = new DoubleParameter("Min Depth", 0d, 1000d, new Double(0));
+		minDepthParam = new DoubleParameter("Min Depth", 0d, 700d, new Double(0));
 		minDepthParam.setUnits("km");
-		maxDepthParam = new DoubleParameter("Max Depth", 0d, 1000d, new Double(1000d));
+		maxDepthParam = new DoubleParameter("Max Depth", 0d, 700d, new Double(700d));
 		maxDepthParam.setUnits("km");
 		regionCenterTypeParam = new EnumParameter<AftershockStatsGUI.RegionCenterType>(
 				"Region Center", EnumSet.allOf(RegionCenterType.class), RegionCenterType.CENTROID, null);
@@ -1708,32 +1708,42 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 					}
 				}
 			} else if (event.getParameter() == publishButton) {
-				Product product = null;
-				try {
-					//product = OAF_Publisher.createProduct(mainshock.getEventId(), forecast);
-					JSONObject json = forecast.buildJSON();
-					String jsonText = json.toJSONString();
-					Map<String, String> eimap = ComcatAccessor.extendedInfoToMap (mainshock, ComcatAccessor.EITMOPT_OMIT_NULL_EMPTY);
-					String eventNetwork = eimap.get (ComcatAccessor.PARAM_NAME_NETWORK);
-					String eventCode = eimap.get (ComcatAccessor.PARAM_NAME_CODE);
-					String eventID = mainshock.getEventId();
-					long modifiedTime = 0L;
-					boolean isReviewed = true;
-					product = PDLProductBuilderOaf.createProduct (eventID, eventNetwork, eventCode, isReviewed, jsonText, modifiedTime);
-				} catch (Exception e) {
-					e.printStackTrace();
-					String message = ClassUtils.getClassNameWithoutPackage(e.getClass())+": "+e.getMessage();
-					JOptionPane.showMessageDialog(this, message, "Error building product", JOptionPane.ERROR_MESSAGE);
-				}
-				if (product != null) {
+				String userInput = JOptionPane.showInputDialog(this, "Type \"PDL\" and press OK to publish forecast", "Confirm publication", JOptionPane.PLAIN_MESSAGE);
+				if (userInput == null || !(userInput.equals("PDL"))) {
+					JOptionPane.showMessageDialog(this, "Canceled: Forecast has NOT been sent to PDL", "Publication canceled", JOptionPane.INFORMATION_MESSAGE);
+				} else {
+					Product product = null;
 					try {
-						//OAF_Publisher.sendProduct(product);
-						PDLSender.signProduct(product);
-						PDLSender.sendProduct(product, true);
+						//product = OAF_Publisher.createProduct(mainshock.getEventId(), forecast);
+						JSONObject json = forecast.buildJSON();
+						String jsonText = json.toJSONString();
+						Map<String, String> eimap = ComcatAccessor.extendedInfoToMap (mainshock, ComcatAccessor.EITMOPT_OMIT_NULL_EMPTY);
+						String eventNetwork = eimap.get (ComcatAccessor.PARAM_NAME_NETWORK);
+						String eventCode = eimap.get (ComcatAccessor.PARAM_NAME_CODE);
+						String eventID = mainshock.getEventId();
+						long modifiedTime = 0L;
+						boolean isReviewed = true;
+						product = PDLProductBuilderOaf.createProduct (eventID, eventNetwork, eventCode, isReviewed, jsonText, modifiedTime);
 					} catch (Exception e) {
 						e.printStackTrace();
 						String message = ClassUtils.getClassNameWithoutPackage(e.getClass())+": "+e.getMessage();
-						JOptionPane.showMessageDialog(this, message, "Error sending product", JOptionPane.ERROR_MESSAGE);
+						JOptionPane.showMessageDialog(this, message, "Error building product", JOptionPane.ERROR_MESSAGE);
+					}
+					if (product != null) {
+						boolean isSent = false;
+						try {
+							//OAF_Publisher.sendProduct(product);
+							PDLSender.signProduct(product);
+							PDLSender.sendProduct(product, true);
+							isSent = true;
+						} catch (Exception e) {
+							e.printStackTrace();
+							String message = ClassUtils.getClassNameWithoutPackage(e.getClass())+": "+e.getMessage();
+							JOptionPane.showMessageDialog(this, message, "Error sending product", JOptionPane.ERROR_MESSAGE);
+						}
+						if (isSent) {
+							JOptionPane.showMessageDialog(this, "Success: Forecast has been successfully sent to PDL", "Publication succeeded", JOptionPane.INFORMATION_MESSAGE);
+						}
 					}
 				}
 			} else if (event.getParameter() == advisoryDurationParam) {
