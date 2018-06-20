@@ -1,5 +1,6 @@
 package scratch.aftershockStatistics.aafs.entity;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.bson.types.ObjectId;
@@ -44,6 +45,7 @@ import scratch.aftershockStatistics.util.MarshalException;
 @Entity(value = "timeline", noClassnameStored = true)
 @Indexes({
 	@Index(fields = {@Field("event_id")}, options = @IndexOptions(name = "actevid")),
+	@Index(fields = {@Field("comcat_ids")}, options = @IndexOptions(name = "actccid")),
 	@Index(fields = {@Field("action_time")}, options = @IndexOptions(name = "acttime"))
 })
 public class TimelineEntry implements java.io.Serializable {
@@ -61,6 +63,9 @@ public class TimelineEntry implements java.io.Serializable {
 	// Time that this timeline entry was created, in milliseconds since the epoch.
 	// The collection is indexed on this field, so timeline entries in a given
 	// time span can be obtained with a database query efficiently.
+	// In practice, every entry in the collection must have a different value of action_time
+	// (so time values may need to be altered slightly), strictly monotonically increasing
+	// in the order that entries are written.
 
 	//@Indexed(options = @IndexOptions(name = "acttime"))
 	private long action_time;
@@ -70,9 +75,18 @@ public class TimelineEntry implements java.io.Serializable {
 	// Event ID that this action pertains to.
 	// Entries not referring to an event should put an empty string here (not null).
 	// This can be used to find all timeline entries pertaining to an event.
+	// In practice, this is not a Comcat event ID, but rather a similar string that serves
+	// to identify an earthquake uniquely even if the Comcat IDs change.
 
 	//@Indexed(options = @IndexOptions(name = "actevid"))
 	private String event_id;
+
+	// List of Comcat IDs for this timeline.
+	// This cannot be null or empty, and the array elements cannot be null.
+	// This can be used to find all timeline entries pertaining to one or more Comcat IDs.
+
+	//@Indexed(options = @IndexOptions(name = "actccid"))
+	private String[] comcat_ids;
 
 	// Action code for this timeline entry.
 
@@ -122,6 +136,14 @@ public class TimelineEntry implements java.io.Serializable {
 
     private void set_event_id (String event_id) {
         this.event_id = event_id;
+    }
+
+    public String[] get_comcat_ids() {
+        return comcat_ids.clone();
+    }
+
+    private void set_comcat_ids (String[] comcat_ids) {
+        this.comcat_ids = comcat_ids.clone();
     }
 
     public int get_actcode() {
@@ -317,6 +339,7 @@ public class TimelineEntry implements java.io.Serializable {
 			+ "\tid: " + ((id == null) ? ("null") : (id.toHexString())) + "\n"
 			+ "\taction_time: " + action_time + "\n"
 			+ "\tevent_id: " + event_id + "\n"
+			+ "\tcomcat_ids: " + Arrays.toString (comcat_ids) + "\n"
 			+ "\tactcode: " + actcode + "\n"
 			+ "\tdetails: " + get_details_description();
 		return str;
@@ -363,13 +386,21 @@ public class TimelineEntry implements java.io.Serializable {
 	 * Returns the new entry.
 	 */
 	public static TimelineEntry submit_timeline_entry (RecordKey key, long action_time, String event_id,
-			int actcode, MarshalWriter details) {
+			String[] comcat_ids, int actcode, MarshalWriter details) {
 
 		// Check conditions
 
 		if (!( action_time > 0L
-			&& event_id != null )) {
-			throw new IllegalArgumentException("TimelineEntry.submit_timeline_entry: Invalid log parameters");
+			&& event_id != null
+			&& comcat_ids != null
+			&& comcat_ids.length > 0 )) {
+			throw new IllegalArgumentException("TimelineEntry.submit_timeline_entry: Invalid timeline parameters");
+		}
+
+		for (String comcat_id: comcat_ids) {
+			if (!( comcat_id != null )) {
+				throw new IllegalArgumentException("TimelineEntry.submit_timeline_entry: Invalid timeline parameters");
+			}
 		}
 
 		// Construct the timeline entry object
@@ -378,6 +409,7 @@ public class TimelineEntry implements java.io.Serializable {
 		tentry.set_record_key (key);
 		tentry.set_action_time (action_time);
 		tentry.set_event_id (event_id);
+		tentry.set_comcat_ids (comcat_ids);
 		tentry.set_actcode (actcode);
 		tentry.set_details (details);
 
@@ -387,6 +419,23 @@ public class TimelineEntry implements java.io.Serializable {
 		datastore.save(tentry);
 		
 		return tentry;
+	}
+
+
+
+
+	/**
+	 * submit_timeline_entry - Submit a timeline entry.
+	 * Temporary function signature for transition.
+	 */
+	public static TimelineEntry submit_timeline_entry (RecordKey key, long action_time, String event_id,
+			int actcode, MarshalWriter details) {
+
+		String[] comcat_ids = new String[1];
+		comcat_ids[0] = event_id;
+
+		return submit_timeline_entry (key, action_time, event_id,
+			comcat_ids, actcode, details);
 	}
 
 
@@ -446,8 +495,10 @@ public class TimelineEntry implements java.io.Serializable {
 	 * @param action_time_hi = Maximum action time, in milliseconds since the epoch.
 	 *                         Can be 0L for no maximum.
 	 * @param event_id = Event id. Can be null to return entries for all events.
+	 * @param comcat_ids = Comcat id list. Can be null or empty to return entries for all Comcat ids.
+	 *                     If specified, return entries associated with any of the given ids.
 	 */
-	public static List<TimelineEntry> get_timeline_entry_range (long action_time_lo, long action_time_hi, String event_id) {
+	public static List<TimelineEntry> get_timeline_entry_range (long action_time_lo, long action_time_hi, String event_id, String[] comcat_ids) {
 
 		// Get the MongoDB data store
 
@@ -461,6 +512,14 @@ public class TimelineEntry implements java.io.Serializable {
 
 		if (event_id != null) {
 			query = query.filter("event_id ==", event_id);
+		}
+
+		// Select by comcat_ids
+
+		if (comcat_ids != null) {
+			if (comcat_ids.length > 0) {
+				query = query.filter("comcat_ids in", comcat_ids);
+			}
 		}
 
 		// Select entries with action_time >= action_time_lo
@@ -496,8 +555,10 @@ public class TimelineEntry implements java.io.Serializable {
 	 * @param action_time_hi = Maximum action time, in milliseconds since the epoch.
 	 *                         Can be 0L for no maximum.
 	 * @param event_id = Event id. Can be null to return entries for all events.
+	 * @param comcat_ids = Comcat id list. Can be null or empty to return entries for all Comcat ids.
+	 *                     If specified, return entries associated with any of the given ids.
 	 */
-	public static RecordIterator<TimelineEntry> fetch_timeline_entry_range (long action_time_lo, long action_time_hi, String event_id) {
+	public static RecordIterator<TimelineEntry> fetch_timeline_entry_range (long action_time_lo, long action_time_hi, String event_id, String[] comcat_ids) {
 
 		// Get the MongoDB data store
 
@@ -511,6 +572,14 @@ public class TimelineEntry implements java.io.Serializable {
 
 		if (event_id != null) {
 			query = query.filter("event_id ==", event_id);
+		}
+
+		// Select by comcat_ids
+
+		if (comcat_ids != null) {
+			if (comcat_ids.length > 0) {
+				query = query.filter("comcat_ids in", comcat_ids);
+			}
 		}
 
 		// Select entries with action_time >= action_time_lo
@@ -546,10 +615,12 @@ public class TimelineEntry implements java.io.Serializable {
 	 * @param action_time_hi = Maximum action time, in milliseconds since the epoch.
 	 *                         Can be 0L for no maximum.
 	 * @param event_id = Event id. Can be null to return entries for all events.
+	 * @param comcat_ids = Comcat id list. Can be null or empty to return entries for all Comcat ids.
+	 *                     If specified, return entries associated with any of the given ids.
 	 * Returns the matching timeline entry with the greatest action_time (most recent),
 	 * or null if there is no matching timeline entry.
 	 */
-	public static TimelineEntry get_recent_timeline_entry (long action_time_lo, long action_time_hi, String event_id) {
+	public static TimelineEntry get_recent_timeline_entry (long action_time_lo, long action_time_hi, String event_id, String[] comcat_ids) {
 
 		// Get the MongoDB data store
 
@@ -563,6 +634,14 @@ public class TimelineEntry implements java.io.Serializable {
 
 		if (event_id != null) {
 			query = query.filter("event_id ==", event_id);
+		}
+
+		// Select by comcat_ids
+
+		if (comcat_ids != null) {
+			if (comcat_ids.length > 0) {
+				query = query.filter("comcat_ids in", comcat_ids);
+			}
 		}
 
 		// Select entries with action_time >= action_time_lo
@@ -640,6 +719,7 @@ public class TimelineEntry implements java.io.Serializable {
 		writer.marshalString      ("id"         , sid        );
 		writer.marshalLong        ("action_time", action_time);
 		writer.marshalString      ("event_id"   , event_id   );
+		writer.marshalStringArray ("comcat_ids" , comcat_ids );
 		writer.marshalInt         ("actcode"    , actcode    );
 		writer.marshalJsonString  ("details"    , details    );
 //		writer.marshalLongArray   ("details_l"  , details_l  );
@@ -663,6 +743,7 @@ public class TimelineEntry implements java.io.Serializable {
 		sid         = reader.unmarshalString      ("id"         );
 		action_time = reader.unmarshalLong        ("action_time");
 		event_id    = reader.unmarshalString      ("event_id"   );
+		comcat_ids  = reader.unmarshalStringArray ("comcat_ids" );
 		actcode     = reader.unmarshalInt         ("actcode"    );
 		details     = reader.unmarshalJsonString  ("details"    );
 //		details_l   = reader.unmarshalLongArray   ("details_l"  );

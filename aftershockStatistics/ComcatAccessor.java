@@ -718,11 +718,13 @@ public class ComcatAccessor {
 	private static ObsEqkRupture eventToObsRup(JsonEvent event, boolean wrapLon, boolean extendedInfo) {
 		double lat = event.getLatitude().doubleValue();
 		double lon = event.getLongitude().doubleValue();
+
 		GeoTools.validateLon(lon);
 		if (wrapLon && lon < 0.0) {
 			lon += 360.0;
 			GeoTools.validateLon(lon);
 		}
+
 		double dep = event.getDepth().doubleValue();
 		if (dep < 0.0) {
 			// some regional networks can report negative depths, but the definition of what they're relative to can vary between
@@ -732,6 +734,7 @@ public class ComcatAccessor {
 			dep = 0.0;
 		}
 		Location hypo = new Location(lat, lon, dep);
+
 		double mag=0.0;
 		try{
 			mag = event.getMag().doubleValue();
@@ -739,8 +742,13 @@ public class ComcatAccessor {
 			//System.out.println(event.toString());
 			return null;
 		}
-		ObsEqkRupture rup = new ObsEqkRupture(event.getEventId().toString(),
-				event.getTime().getTime(), hypo, mag);
+
+		String event_id = event.getEventId().toString();
+		if (event_id == null || event_id.isEmpty()) {
+			return null;	// this ensures returned events always have an event ID
+		}
+
+		ObsEqkRupture rup = new ObsEqkRupture(event_id, event.getTime().getTime(), hypo, mag);
 		
 		if (extendedInfo) {
 			// adds the place description ("10km from wherever"). Needed for ETAS_AftershockStatistics forecast document -NVDE 
