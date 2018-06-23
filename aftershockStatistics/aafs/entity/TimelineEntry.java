@@ -497,8 +497,10 @@ public class TimelineEntry implements java.io.Serializable {
 	 * @param event_id = Event id. Can be null to return entries for all events.
 	 * @param comcat_ids = Comcat id list. Can be null or empty to return entries for all Comcat ids.
 	 *                     If specified, return entries associated with any of the given ids.
+	 * @param action_time_div_rem = 2-element array containing divisor (element 0) and remainder (element 1) for
+	 *                              action time modulus. Can be null, or contain zeros, for no modulus test.
 	 */
-	public static List<TimelineEntry> get_timeline_entry_range (long action_time_lo, long action_time_hi, String event_id, String[] comcat_ids) {
+	public static List<TimelineEntry> get_timeline_entry_range (long action_time_lo, long action_time_hi, String event_id, String[] comcat_ids, long[] action_time_div_rem) {
 
 		// Get the MongoDB data store
 
@@ -532,6 +534,17 @@ public class TimelineEntry implements java.io.Serializable {
 
 		if (action_time_hi > 0L) {
 			query = query.filter("action_time <=", new Long(action_time_hi));
+		}
+
+		// Select entries with action_time % action_time_div_rem[0] == action_time_div_rem[1]
+
+		if (action_time_div_rem != null) {
+			if (action_time_div_rem[0] > 0L) {
+				Long[] div_rem = new Long[2];
+				div_rem[0] = new Long(action_time_div_rem[0]);
+				div_rem[1] = new Long(action_time_div_rem[1]);
+				query = query.filter("action_time mod", div_rem);
+			}
 		}
 
 		// Sort by action_time in descending order (most recent first)
@@ -557,8 +570,10 @@ public class TimelineEntry implements java.io.Serializable {
 	 * @param event_id = Event id. Can be null to return entries for all events.
 	 * @param comcat_ids = Comcat id list. Can be null or empty to return entries for all Comcat ids.
 	 *                     If specified, return entries associated with any of the given ids.
+	 * @param action_time_div_rem = 2-element array containing divisor (element 0) and remainder (element 1) for
+	 *                              action time modulus. Can be null, or contain zeros, for no modulus test.
 	 */
-	public static RecordIterator<TimelineEntry> fetch_timeline_entry_range (long action_time_lo, long action_time_hi, String event_id, String[] comcat_ids) {
+	public static RecordIterator<TimelineEntry> fetch_timeline_entry_range (long action_time_lo, long action_time_hi, String event_id, String[] comcat_ids, long[] action_time_div_rem) {
 
 		// Get the MongoDB data store
 
@@ -592,6 +607,17 @@ public class TimelineEntry implements java.io.Serializable {
 
 		if (action_time_hi > 0L) {
 			query = query.filter("action_time <=", new Long(action_time_hi));
+		}
+
+		// Select entries with action_time % action_time_div_rem[0] == action_time_div_rem[1]
+
+		if (action_time_div_rem != null) {
+			if (action_time_div_rem[0] > 0L) {
+				Long[] div_rem = new Long[2];
+				div_rem[0] = new Long(action_time_div_rem[0]);
+				div_rem[1] = new Long(action_time_div_rem[1]);
+				query = query.filter("action_time mod", div_rem);
+			}
 		}
 
 		// Sort by action_time in descending order (most recent first)
@@ -617,10 +643,12 @@ public class TimelineEntry implements java.io.Serializable {
 	 * @param event_id = Event id. Can be null to return entries for all events.
 	 * @param comcat_ids = Comcat id list. Can be null or empty to return entries for all Comcat ids.
 	 *                     If specified, return entries associated with any of the given ids.
+	 * @param action_time_div_rem = 2-element array containing divisor (element 0) and remainder (element 1) for
+	 *                              action time modulus. Can be null, or contain zeros, for no modulus test.
 	 * Returns the matching timeline entry with the greatest action_time (most recent),
 	 * or null if there is no matching timeline entry.
 	 */
-	public static TimelineEntry get_recent_timeline_entry (long action_time_lo, long action_time_hi, String event_id, String[] comcat_ids) {
+	public static TimelineEntry get_recent_timeline_entry (long action_time_lo, long action_time_hi, String event_id, String[] comcat_ids, long[] action_time_div_rem) {
 
 		// Get the MongoDB data store
 
@@ -654,6 +682,17 @@ public class TimelineEntry implements java.io.Serializable {
 
 		if (action_time_hi > 0L) {
 			query = query.filter("action_time <=", new Long(action_time_hi));
+		}
+
+		// Select entries with action_time % action_time_div_rem[0] == action_time_div_rem[1]
+
+		if (action_time_div_rem != null) {
+			if (action_time_div_rem[0] > 0L) {
+				Long[] div_rem = new Long[2];
+				div_rem[0] = new Long(action_time_div_rem[0]);
+				div_rem[1] = new Long(action_time_div_rem[1]);
+				query = query.filter("action_time mod", div_rem);
+			}
 		}
 
 		// Sort by action_time in descending order (most recent first)

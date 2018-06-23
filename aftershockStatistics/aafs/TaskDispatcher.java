@@ -985,7 +985,7 @@ public class TaskDispatcher implements Runnable {
 
 				// Get the most recent timeline entry for this event
 
-				tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id(), null);
+				tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id(), null, null);
 
 				if (tentry != null) {
 
@@ -1088,7 +1088,7 @@ public class TaskDispatcher implements Runnable {
 
 			// Get the most recent timeline entry for this event
 
-			tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id(), null);
+			tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id(), null, null);
 
 			if (tentry == null) {
 				return RESCODE_TIMELINE_NOT_FOUND;
@@ -1132,7 +1132,7 @@ public class TaskDispatcher implements Runnable {
 
 		// Get the most recent timeline entry for this event
 
-		tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id(), null);
+		tentry = TimelineEntry.get_recent_timeline_entry (0L, 0L, task.get_event_id(), null, null);
 
 		if (tentry == null) {
 			return RESCODE_TIMELINE_NOT_FOUND;

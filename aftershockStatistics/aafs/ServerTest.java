@@ -905,7 +905,7 @@ public class ServerTest {
 		
 			event_id = "Event_2";
 			comcat_ids = new String[]{"ccid_21", "ccid_22", "ccid_23"};
-			action_time = 20100L;
+			action_time = 20102L;
 			actcode = 102;
 			details = TimelineEntry.begin_details();
 			details.marshalArrayBegin (null, 5);
@@ -920,7 +920,7 @@ public class ServerTest {
 		
 			event_id = "Event_4";
 			comcat_ids = new String[]{"ccid_41", "ccid_42", "ccid_43", "ccid_23"};
-			action_time = 40100L;
+			action_time = 40104L;
 			actcode = 104;
 			details = null;
 			TimelineEntry.submit_timeline_entry (null, action_time, event_id,
@@ -928,7 +928,7 @@ public class ServerTest {
 		
 			event_id = "Event_1";
 			comcat_ids = new String[]{"ccid_11", "ccid_12", "ccid_13"};
-			action_time = 10100L;
+			action_time = 10101L;
 			actcode = 101;
 			details = TimelineEntry.begin_details();
 			details.marshalArrayBegin (null, 5);
@@ -943,7 +943,7 @@ public class ServerTest {
 		
 			event_id = "Event_5";
 			comcat_ids = new String[]{"ccid_51", "ccid_52", "ccid_53", "ccid_23", "ccid_13"};
-			action_time = 50100L;
+			action_time = 50105L;
 			actcode = 105;
 			details = TimelineEntry.begin_details();
 			details.marshalArrayBegin (null, 5);
@@ -958,7 +958,7 @@ public class ServerTest {
 		
 			event_id = "Event_3";
 			comcat_ids = new String[]{"ccid_31", "ccid_32"};
-			action_time = 30100L;
+			action_time = 30103L;
 			actcode = 103;
 			details = TimelineEntry.begin_details();
 			details.marshalArrayBegin (null, 5);
@@ -985,22 +985,29 @@ public class ServerTest {
 
 		// Two or three additional arguments
 
-		if (args.length < 3) {
+		if (args.length < 4) {
 			System.err.println ("ServerTest : Invalid 'test21' subcommand");
 			return;
 		}
 
 		long action_time_lo = Long.parseLong(args[1]);
 		long action_time_hi = Long.parseLong(args[2]);
+		long div_rem = Long.parseLong(args[3]);
+		long[] action_time_div_rem = null;
+		if (div_rem > 0L) {
+			action_time_div_rem = new long[2];
+			action_time_div_rem[0] = div_rem / 1000L;
+			action_time_div_rem[1] = div_rem % 1000L;
+		}
 		String event_id = null;
-		if (args.length >= 4) {
-			if (!( args[3].equalsIgnoreCase("-") )) {
-				event_id = args[3];
+		if (args.length >= 5) {
+			if (!( args[4].equalsIgnoreCase("-") )) {
+				event_id = args[4];
 			}
 		}
 		String[] comcat_ids = null;
-		if (args.length >= 5) {
-			comcat_ids = Arrays.copyOfRange (args, 4, args.length);
+		if (args.length >= 6) {
+			comcat_ids = Arrays.copyOfRange (args, 5, args.length);
 		}
 
 		// Connect to MongoDB
@@ -1011,7 +1018,7 @@ public class ServerTest {
 
 			// Get the list of matching timeline entries
 
-			List<TimelineEntry> entries = TimelineEntry.get_timeline_entry_range (action_time_lo, action_time_hi, event_id, comcat_ids);
+			List<TimelineEntry> entries = TimelineEntry.get_timeline_entry_range (action_time_lo, action_time_hi, event_id, comcat_ids, action_time_div_rem);
 
 			// Display them
 
@@ -1033,22 +1040,29 @@ public class ServerTest {
 
 		// Two or three additional arguments
 
-		if (args.length < 3) {
+		if (args.length < 4) {
 			System.err.println ("ServerTest : Invalid 'test22' subcommand");
 			return;
 		}
 
 		long action_time_lo = Long.parseLong(args[1]);
 		long action_time_hi = Long.parseLong(args[2]);
+		long div_rem = Long.parseLong(args[3]);
+		long[] action_time_div_rem = null;
+		if (div_rem > 0L) {
+			action_time_div_rem = new long[2];
+			action_time_div_rem[0] = div_rem / 1000L;
+			action_time_div_rem[1] = div_rem % 1000L;
+		}
 		String event_id = null;
-		if (args.length >= 4) {
-			if (!( args[3].equalsIgnoreCase("-") )) {
-				event_id = args[3];
+		if (args.length >= 5) {
+			if (!( args[4].equalsIgnoreCase("-") )) {
+				event_id = args[4];
 			}
 		}
 		String[] comcat_ids = null;
-		if (args.length >= 5) {
-			comcat_ids = Arrays.copyOfRange (args, 4, args.length);
+		if (args.length >= 6) {
+			comcat_ids = Arrays.copyOfRange (args, 5, args.length);
 		}
 
 		// Connect to MongoDB
@@ -1060,7 +1074,7 @@ public class ServerTest {
 
 				// Get an iterator over matching timeline entries
 
-				RecordIterator<TimelineEntry> entries = TimelineEntry.fetch_timeline_entry_range (action_time_lo, action_time_hi, event_id, comcat_ids);
+				RecordIterator<TimelineEntry> entries = TimelineEntry.fetch_timeline_entry_range (action_time_lo, action_time_hi, event_id, comcat_ids, action_time_div_rem);
 			){
 
 				// Display them
@@ -1083,22 +1097,29 @@ public class ServerTest {
 
 		// Two or three additional arguments
 
-		if (args.length < 3) {
+		if (args.length < 4) {
 			System.err.println ("ServerTest : Invalid 'test23' subcommand");
 			return;
 		}
 
 		long action_time_lo = Long.parseLong(args[1]);
 		long action_time_hi = Long.parseLong(args[2]);
+		long div_rem = Long.parseLong(args[3]);
+		long[] action_time_div_rem = null;
+		if (div_rem > 0L) {
+			action_time_div_rem = new long[2];
+			action_time_div_rem[0] = div_rem / 1000L;
+			action_time_div_rem[1] = div_rem % 1000L;
+		}
 		String event_id = null;
-		if (args.length >= 4) {
-			if (!( args[3].equalsIgnoreCase("-") )) {
-				event_id = args[3];
+		if (args.length >= 5) {
+			if (!( args[4].equalsIgnoreCase("-") )) {
+				event_id = args[4];
 			}
 		}
 		String[] comcat_ids = null;
-		if (args.length >= 5) {
-			comcat_ids = Arrays.copyOfRange (args, 4, args.length);
+		if (args.length >= 6) {
+			comcat_ids = Arrays.copyOfRange (args, 5, args.length);
 		}
 
 		// Connect to MongoDB
@@ -1109,7 +1130,7 @@ public class ServerTest {
 
 			// Get the list of matching timeline entries
 
-			List<TimelineEntry> entries = TimelineEntry.get_timeline_entry_range (action_time_lo, action_time_hi, event_id, comcat_ids);
+			List<TimelineEntry> entries = TimelineEntry.get_timeline_entry_range (action_time_lo, action_time_hi, event_id, comcat_ids, action_time_div_rem);
 
 			// Display them, and re-fetch
 
@@ -1132,22 +1153,29 @@ public class ServerTest {
 
 		// Two or three additional arguments
 
-		if (args.length < 3) {
+		if (args.length < 4) {
 			System.err.println ("ServerTest : Invalid 'test24' subcommand");
 			return;
 		}
 
 		long action_time_lo = Long.parseLong(args[1]);
 		long action_time_hi = Long.parseLong(args[2]);
+		long div_rem = Long.parseLong(args[3]);
+		long[] action_time_div_rem = null;
+		if (div_rem > 0L) {
+			action_time_div_rem = new long[2];
+			action_time_div_rem[0] = div_rem / 1000L;
+			action_time_div_rem[1] = div_rem % 1000L;
+		}
 		String event_id = null;
-		if (args.length >= 4) {
-			if (!( args[3].equalsIgnoreCase("-") )) {
-				event_id = args[3];
+		if (args.length >= 5) {
+			if (!( args[4].equalsIgnoreCase("-") )) {
+				event_id = args[4];
 			}
 		}
 		String[] comcat_ids = null;
-		if (args.length >= 5) {
-			comcat_ids = Arrays.copyOfRange (args, 4, args.length);
+		if (args.length >= 6) {
+			comcat_ids = Arrays.copyOfRange (args, 5, args.length);
 		}
 
 		// Connect to MongoDB
@@ -1158,7 +1186,7 @@ public class ServerTest {
 
 			// Get the list of matching timeline entries
 
-			List<TimelineEntry> entries = TimelineEntry.get_timeline_entry_range (action_time_lo, action_time_hi, event_id, comcat_ids);
+			List<TimelineEntry> entries = TimelineEntry.get_timeline_entry_range (action_time_lo, action_time_hi, event_id, comcat_ids, action_time_div_rem);
 
 			// Display them, and delete
 
@@ -1425,22 +1453,29 @@ public class ServerTest {
 
 		// Two or three additional arguments
 
-		if (args.length < 3) {
+		if (args.length < 4) {
 			System.err.println ("ServerTest : Invalid 'test31' subcommand");
 			return;
 		}
 
 		long action_time_lo = Long.parseLong(args[1]);
 		long action_time_hi = Long.parseLong(args[2]);
+		long div_rem = Long.parseLong(args[3]);
+		long[] action_time_div_rem = null;
+		if (div_rem > 0L) {
+			action_time_div_rem = new long[2];
+			action_time_div_rem[0] = div_rem / 1000L;
+			action_time_div_rem[1] = div_rem % 1000L;
+		}
 		String event_id = null;
-		if (args.length >= 4) {
-			if (!( args[3].equalsIgnoreCase("-") )) {
-				event_id = args[3];
+		if (args.length >= 5) {
+			if (!( args[4].equalsIgnoreCase("-") )) {
+				event_id = args[4];
 			}
 		}
 		String[] comcat_ids = null;
-		if (args.length >= 5) {
-			comcat_ids = Arrays.copyOfRange (args, 4, args.length);
+		if (args.length >= 6) {
+			comcat_ids = Arrays.copyOfRange (args, 5, args.length);
 		}
 
 		// Connect to MongoDB
@@ -1451,7 +1486,7 @@ public class ServerTest {
 
 			// Get the most recent matching timeline entry
 
-			TimelineEntry entry = TimelineEntry.get_recent_timeline_entry (action_time_lo, action_time_hi, event_id, comcat_ids);
+			TimelineEntry entry = TimelineEntry.get_recent_timeline_entry (action_time_lo, action_time_hi, event_id, comcat_ids, action_time_div_rem);
 
 			// Display it
 
@@ -1923,10 +1958,11 @@ public class ServerTest {
 
 		// Subcommand : Test #21
 		// Command format:
-		//  test21  action_time_lo  action_time_hi  [event_id]  [comcat_id]...
+		//  test21  action_time_lo  action_time_hi  action_time_div_rem  [event_id]  [comcat_id]...
 		// Search the timeline for action time and/or event id and/or comcat id; using list.
 		// Times can be 0 for no bound, event id can be omitted or equal to "-" for no restriction.
 		// If any comcat_id are given, the entry must match at least one of them.
+		// The action_time_div_rem can be 0 for no modulus test, otherwise it is divisor * 1000 + remainder.
 
 		if (args[0].equalsIgnoreCase ("test21")) {
 
@@ -1941,10 +1977,11 @@ public class ServerTest {
 
 		// Subcommand : Test #22
 		// Command format:
-		//  test22  action_time_lo  action_time_hi  [event_id]  [comcat_id]...
+		//  test22  action_time_lo  action_time_hi  action_time_div_rem  [event_id]  [comcat_id]...
 		// Search the timeline for action time and/or event id and/or comcat id; using iterator.
 		// Times can be 0 for no bound, event id can be omitted for no restriction.
 		// If any comcat_id are given, the entry must match at least one of them.
+		// The action_time_div_rem can be 0 for no modulus test, otherwise it is divisor * 1000 + remainder.
 
 		if (args[0].equalsIgnoreCase ("test22")) {
 
@@ -1959,10 +1996,11 @@ public class ServerTest {
 
 		// Subcommand : Test #23
 		// Command format:
-		//  test23  action_time_lo  action_time_hi  [event_id]  [comcat_id]...
+		//  test23  action_time_lo  action_time_hi  action_time_div_rem  [event_id]  [comcat_id]...
 		// Search  the timeline for action time and/or event id and/or comcat id; and re-fetch the entries.
 		// Times can be 0 for no bound, event id can be omitted for no restriction.
 		// If any comcat_id are given, the entry must match at least one of them.
+		// The action_time_div_rem can be 0 for no modulus test, otherwise it is divisor * 1000 + remainder.
 
 		if (args[0].equalsIgnoreCase ("test23")) {
 
@@ -1977,10 +2015,11 @@ public class ServerTest {
 
 		// Subcommand : Test #24
 		// Command format:
-		//  test24  action_time_lo  action_time_hi  [event_id]  [comcat_id]...
+		//  test24  action_time_lo  action_time_hi  action_time_div_rem  [event_id]  [comcat_id]...
 		// Search  the timeline for action time and/or event id and/or comcat id; and delete the entries.
 		// Times can be 0 for no bound, event id can be omitted for no restriction.
 		// If any comcat_id are given, the entry must match at least one of them.
+		// The action_time_div_rem can be 0 for no modulus test, otherwise it is divisor * 1000 + remainder.
 
 		if (args[0].equalsIgnoreCase ("test24")) {
 
@@ -2095,10 +2134,11 @@ public class ServerTest {
 
 		// Subcommand : Test #31
 		// Command format:
-		//  test31  action_time_lo  action_time_hi  [event_id]  [comcat_id]...
+		//  test31  action_time_lo  action_time_hi  action_time_div_rem  [event_id]  [comcat_id]...
 		// Search the timeline for action time and/or event id and/or comcat id; get most recent.
 		// Times can be 0 for no bound, event id can be omitted for no restriction.
 		// If any comcat_id are given, the entry must match at least one of them.
+		// The action_time_div_rem can be 0 for no modulus test, otherwise it is divisor * 1000 + remainder.
 
 		if (args[0].equalsIgnoreCase ("test31")) {
 
