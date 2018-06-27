@@ -101,7 +101,7 @@ public class PDLProductBuilderOaf {
 
 		// Our PDL source, type, and code
 
-		String source = "usgs-aafs";
+		String source = "us";
 		String type = "oaf";
 		String code = eventID;
 
