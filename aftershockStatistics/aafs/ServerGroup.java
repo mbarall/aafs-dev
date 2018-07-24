@@ -28,9 +28,9 @@ public class ServerGroup extends ServerComponent {
 
 	public TimelineSupport timeline_sup;
 
-	// Timeline alias functions.
+	// Alias support.
 
-	public TimelineAlias timeline_alias;
+	public AliasSupport alias_sup;
 
 	// PDL support.
 
@@ -56,7 +56,7 @@ public class ServerGroup extends ServerComponent {
 		this.task_sup       = null;
 		this.log_sup        = null;
 		this.timeline_sup   = null;
-		this.timeline_alias = null;
+		this.alias_sup      = null;
 		this.pdl_sup        = null;
 		this.backup_sup     = null;
 
@@ -88,8 +88,8 @@ public class ServerGroup extends ServerComponent {
 		this.timeline_sup   = new TimelineSupport();
 		this.timeline_sup.setup (this);
 
-		this.timeline_alias = new TimelineAlias();
-		this.timeline_alias.setup (this);
+		this.alias_sup      = new AliasSupport();
+		this.alias_sup.setup (this);
 
 		this.pdl_sup        = new PDLSupport();
 		this.pdl_sup.setup (this);
@@ -115,6 +115,9 @@ public class ServerGroup extends ServerComponent {
 		dispatch_table[OPCODE_INTAKE_PDL       ] = new ExIntakePDL();
 		dispatch_table[OPCODE_ANALYST_INTERVENE] = new ExAnalystIntervene();
 		dispatch_table[OPCODE_UNKNOWN          ] = new ExUnknown();
+		dispatch_table[OPCODE_ALIAS_SPLIT      ] = new ExAliasSplit();
+		dispatch_table[OPCODE_ALIAS_STOP       ] = new ExAliasStop();
+		dispatch_table[OPCODE_ALIAS_REVIVE     ] = new ExAliasRevive();
 
 		for (int i = 0; i <= OPCODE_MAX; ++i) {
 			if (dispatch_table[i] != null) {

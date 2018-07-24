@@ -971,14 +971,18 @@ public class ComcatAccessor {
 	 * If preferred_id is non-null and non-empty, then preferred_id appears as the first
 	 * item in the list (whether or not it also appears in ids).
 	 * Except for preferred_id, the event ids are listed in the same order they appear in ids.
+	 * It is guaranteed that the returned list contains no duplicates, even in the unlikely
+	 * (maybe impossible) event that Comcat returns a list containing a duplicate.
 	 */
 	public static List<String> idsToList (String ids, String preferred_id) {
 		ArrayList<String> idlist = new ArrayList<String>();
+		HashSet<String> idset = new HashSet<String>();
 
 		// If there is a preferred id, make it the first element in the list
 
 		if (preferred_id != null) {
 			if (!( preferred_id.isEmpty() )) {
+				idset.add (preferred_id);
 				idlist.add (preferred_id);
 			}
 		}
@@ -1009,10 +1013,9 @@ public class ComcatAccessor {
 
 				if (!( id.isEmpty() )) {
 				
-					// If it doesn't match the preferred id ...
-					// (Note that equalsIgnoreCase returns false if the argument is null)
+					// If it has not been seen before ...
 
-					if (!( id.equalsIgnoreCase (preferred_id) )) {
+					if (idset.add(id)) {
 					
 						// Add it to the list of ids
 

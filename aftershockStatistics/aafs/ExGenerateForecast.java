@@ -6,11 +6,13 @@ import scratch.aftershockStatistics.aafs.entity.PendingTask;
 import scratch.aftershockStatistics.aafs.entity.LogEntry;
 import scratch.aftershockStatistics.aafs.entity.CatalogSnapshot;
 import scratch.aftershockStatistics.aafs.entity.TimelineEntry;
+import scratch.aftershockStatistics.aafs.entity.AliasFamily;
 
 import scratch.aftershockStatistics.util.MarshalReader;
 import scratch.aftershockStatistics.util.MarshalWriter;
 import scratch.aftershockStatistics.util.SimpleUtils;
 
+import scratch.aftershockStatistics.ComcatException;
 import scratch.aftershockStatistics.CompactEqkRupList;
 
 /**
@@ -100,35 +102,18 @@ public class ExGenerateForecast extends ServerExecTask {
 
 		//--- Forecast
 
-		// Fetch parameters, part 1 (control and mainshock parameters)
+		// Get mainshock parameters
 
 		ForecastParameters forecast_params = new ForecastParameters();
 
 		try {
-			forecast_params.fetch_all_1 (task.get_event_id(), tstatus.analyst_params);
+			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), forecast_params);
 		}
 
 		// An exception here triggers a ComCat retry
 
-		catch (Exception e) {
-
-			// Get the next ComCat retry lag
-
-			long next_comcat_retry_lag = sg.task_disp.get_action_config().get_next_comcat_retry_lag (
-											sg.task_disp.get_action_config().int_to_lag (task.get_stage()) + 1L );
-
-			// If there is another retry, stage the task
-
-			if (next_comcat_retry_lag >= 0L) {
-				sg.task_disp.set_taskres_stage (task.get_sched_time() + next_comcat_retry_lag,
-									sg.task_disp.get_action_config().lag_to_int (next_comcat_retry_lag));
-				return RESCODE_STAGE;
-			}
-
-			// Retries exhausted, process the error and log the task
-
-			sg.timeline_sup.process_timeline_comcat_fail (task, tstatus, e);
-			return RESCODE_TIMELINE_COMCAT_FAIL;
+		catch (ComcatException e) {
+			return sg.timeline_sup.process_timeline_comcat_retry (task, tstatus, e);
 		}
 
 		// Check if it's too soon to do this forecast (might happen if mainshock origin time has changed)
@@ -200,24 +185,7 @@ public class ExGenerateForecast extends ServerExecTask {
 		// An exception here triggers a ComCat retry
 
 		catch (Exception e) {
-
-			// Get the next ComCat retry lag
-
-			long next_comcat_retry_lag = sg.task_disp.get_action_config().get_next_comcat_retry_lag (
-											sg.task_disp.get_action_config().int_to_lag (task.get_stage()) + 1L );
-
-			// If there is another retry, stage the task
-
-			if (next_comcat_retry_lag >= 0L) {
-				sg.task_disp.set_taskres_stage (task.get_sched_time() + next_comcat_retry_lag,
-									sg.task_disp.get_action_config().lag_to_int (next_comcat_retry_lag));
-				return RESCODE_STAGE;
-			}
-
-			// Retries exhausted, process the error and log the task
-
-			sg.timeline_sup.process_timeline_comcat_fail (task, tstatus, e);
-			return RESCODE_TIMELINE_COMCAT_FAIL;
+			return sg.timeline_sup.process_timeline_comcat_retry (task, tstatus, e);
 		}
 
 		// Select report for PDL, if any

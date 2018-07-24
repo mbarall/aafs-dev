@@ -720,6 +720,21 @@ public class ForecastParameters {
 	}
 
 
+	//----- Transient parameters -----
+
+	// The timeline ID associated with this query, or null if none.
+	// Note: This parameter is not marshaled/unmarshaled.
+
+	public String timeline_id = null;
+
+	// Set transient parameters to default.
+
+	public void set_default_transient_params () {
+		timeline_id = null;
+		return;
+	}
+
+
 	//----- Construction -----
 
 	// Default constructor.
@@ -727,12 +742,16 @@ public class ForecastParameters {
 	public ForecastParameters () {}
 
 	// Fetch all parameters, part 1.
-	// This fetches just the control and mainshock parameters.
+	// This fetches just the mainshock parameters.
 	// It gives the caller the opportunity to examine the mainshock parameters before proceeding.
+	// Note: It is acceptable to call fetch_all_1 with prior_params == null, and then call
+	// fetch_all_2 with prior_params != null.  The effect is that mainshock parameters are
+	// obtained from Comcat without regard to what's in prior_params.
+	// Note: It is acceptable to call setup_mainshock_only or setup_mainshock_poll in place
+	// of calling fetch_all_1.  This is useful when re-using a ForecastParameters object.
 
 	public void fetch_all_1 (String the_query_event_id, ForecastParameters prior_params) {
 		query_event_id = the_query_event_id;
-		fetch_control_params (prior_params);
 		fetch_mainshock_params (prior_params);
 		return;
 	}
@@ -742,6 +761,7 @@ public class ForecastParameters {
 
 	public void fetch_all_2 (long the_forecast_lag, ForecastParameters prior_params) {
 		forecast_lag = the_forecast_lag;
+		fetch_control_params (prior_params);
 		fetch_generic_params (prior_params);
 		fetch_mag_comp_params (prior_params);
 		fetch_seq_spec_params (prior_params);
@@ -749,31 +769,32 @@ public class ForecastParameters {
 		return;
 	}
 
-	// Set up the mainshock parameters, setting everything else to default.
+	// Set up the mainshock parameters, after setting everything else to default.
+	// This version always throws an exception if the event is not successfully fetched.
 
 	public void setup_mainshock_only (String the_query_event_id) {
-		query_event_id = the_query_event_id;
-		forecast_lag = 0L;
-		set_default_control_params();
+		setup_all_default (the_query_event_id);
+
 		fetch_mainshock_params (null);
-
-		generic_fetch_meth = FETCH_METH_AUTO;
-		generic_avail = false;
-		set_default_generic_params();
-
-		mag_comp_fetch_meth = FETCH_METH_AUTO;
-		mag_comp_avail = false;
-		set_default_mag_comp_params();
-
-		seq_spec_fetch_meth = FETCH_METH_AUTO;
-		seq_spec_avail = false;
-		set_default_seq_spec_params();
-
-		aftershock_search_fetch_meth = FETCH_METH_AUTO;
-		aftershock_search_avail = false;
-		set_default_aftershock_search_params();
 	
 		return;
+	}
+
+	// Set up the mainshock parameters, after setting everything else to default.
+	// This version does not throw EventNotFoundException.
+	// If the event is not found, the function returns with mainshock_avail set to false.
+	// The return value is mainshock_avail.
+
+	public boolean setup_mainshock_poll (String the_query_event_id) {
+		setup_all_default (the_query_event_id);
+
+		try {
+			fetch_mainshock_params (null);
+		} catch (EventNotFoundException e) {
+			mainshock_avail = false;
+		}
+	
+		return mainshock_avail;
 	}
 
 	// Set everything to default.
@@ -783,11 +804,11 @@ public class ForecastParameters {
 		query_event_id = the_query_event_id;
 		forecast_lag = 0L;
 
-		set_default_control_params();
-
 		mainshock_fetch_meth = FETCH_METH_AUTO;
 		mainshock_avail = false;
 		set_default_mainshock_params();
+
+		set_default_control_params();
 
 		generic_fetch_meth = FETCH_METH_AUTO;
 		generic_avail = false;
@@ -804,6 +825,8 @@ public class ForecastParameters {
 		aftershock_search_fetch_meth = FETCH_METH_AUTO;
 		aftershock_search_avail = false;
 		set_default_aftershock_search_params();
+
+		set_default_transient_params();
 	
 		return;
 	}
@@ -866,6 +889,10 @@ public class ForecastParameters {
 			result.append ("min_depth = " + min_depth + "\n");
 			result.append ("max_depth = " + max_depth + "\n");
 			result.append ("min_mag = " + min_mag + "\n");
+		}
+
+		if (timeline_id != null) {
+			result.append ("timeline_id = " + timeline_id + "\n");
 		}
 
 		return result.toString();
@@ -1034,6 +1061,8 @@ public class ForecastParameters {
 		} else {
 			set_default_aftershock_search_params();
 		}
+
+		set_default_transient_params();
 
 		return;
 	}

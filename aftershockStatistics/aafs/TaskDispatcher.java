@@ -6,11 +6,13 @@ import scratch.aftershockStatistics.aafs.entity.PendingTask;
 import scratch.aftershockStatistics.aafs.entity.LogEntry;
 import scratch.aftershockStatistics.aafs.entity.CatalogSnapshot;
 import scratch.aftershockStatistics.aafs.entity.TimelineEntry;
+import scratch.aftershockStatistics.aafs.entity.AliasFamily;
 
 import scratch.aftershockStatistics.util.MarshalReader;
 import scratch.aftershockStatistics.util.MarshalWriter;
 import scratch.aftershockStatistics.util.SimpleUtils;
 
+import scratch.aftershockStatistics.ComcatException;
 import scratch.aftershockStatistics.CompactEqkRupList;
 
 
@@ -156,6 +158,10 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 	private int taskres_stage = 0;
 
+	// Event ID to use when staging current task, or null to leave event ID unchanged.
+
+	private String taskres_event_id = null;
+
 
 
 
@@ -196,6 +202,19 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 	public void set_taskres_stage (long exec_time, int stage) {
 		taskres_exec_time = exec_time;
 		taskres_stage = stage;
+		taskres_event_id = null;
+		return;
+	}
+
+
+
+
+	// Set the execution time and stage to be used when staging a task, during task disposition.
+
+	public void set_taskres_stage (long exec_time, int stage, String event_id) {
+		taskres_exec_time = exec_time;
+		taskres_stage = stage;
+		taskres_event_id = event_id;
 		return;
 	}
 
@@ -595,7 +614,8 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 	//   taskres_log_remark = "".
 	// The execution function must return a result code (RESCODE_XXXXX).
 	//   RESCODE_DELETE deletes the current task, with no other action.
-	//   RESCODE_STAGE stages the current task, using taskres_exec_time and taskres_stage.
+	//   RESCODE_STAGE stages the current task, using taskres_exec_time,
+	//    taskres_stage, and taskres_event_id.
 	//   Any other return writes a log entry with the given result code, using
 	//     taskres_log_time and taskres_log_remark; and then deletes the current task.
 	// If the task is being restarted and a log entry has already been written,
@@ -624,6 +644,10 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 		taskres_log_time = dispatcher_time;
 		taskres_log_remark = "";
+
+		taskres_exec_time = 0L;
+		taskres_stage = 0;
+		taskres_event_id = null;
 
 		// Say hello
 
@@ -701,15 +725,16 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 			// Display message
 
 			if (dispatcher_verbose) {
-				display_taskinfo ("TASK-END:\n"
+				display_taskinfo ("TASK-STAGE:\n"
 					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
 					+ "taskres_exec_time = " + SimpleUtils.time_to_string (taskres_exec_time) + "\n"
-					+ "taskres_stage = " + taskres_stage);
+					+ "taskres_stage = " + taskres_stage + "\n"
+					+ "taskres_event_id = " + ((taskres_event_id == null) ? "null" : taskres_event_id) );
 			}
 
 			// Stage the task, so it will execute again
 
-			PendingTask.stage_task (task, taskres_exec_time, taskres_stage);
+			PendingTask.stage_task (task, taskres_exec_time, taskres_stage, taskres_event_id);
 
 			break;
 		}
@@ -717,5 +742,42 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 		return;
 	}
 
+
+
+
+	//----- Test functions -----
+
+
+
+
+	// Set up the task context.
+	// This sets up the task context as if a task were being dispatched.
+	// It can be used when testing routines that expect the task context to be available.
+
+	public void setup_task_context () {
+
+		dispatcher_time = ServerClock.get_time();
+		dispatcher_true_time = ServerClock.get_true_time();
+		dispatcher_action_config = new ActionConfig();
+
+		taskres_log_time = dispatcher_time;
+		taskres_log_remark = "";
+
+		taskres_exec_time = 0L;
+		taskres_stage = 0;
+		taskres_event_id = null;
+	
+		return;
+	}
+
+
+
+
+	// Get the server group.
+	// This can be used for testing, to make calls directly into support routines.
+
+	public ServerGroup get_server_group () {
+		return sg;
+	}
 
 }

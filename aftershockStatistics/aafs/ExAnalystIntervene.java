@@ -6,11 +6,13 @@ import scratch.aftershockStatistics.aafs.entity.PendingTask;
 import scratch.aftershockStatistics.aafs.entity.LogEntry;
 import scratch.aftershockStatistics.aafs.entity.CatalogSnapshot;
 import scratch.aftershockStatistics.aafs.entity.TimelineEntry;
+import scratch.aftershockStatistics.aafs.entity.AliasFamily;
 
 import scratch.aftershockStatistics.util.MarshalReader;
 import scratch.aftershockStatistics.util.MarshalWriter;
 import scratch.aftershockStatistics.util.SimpleUtils;
 
+import scratch.aftershockStatistics.ComcatException;
 import scratch.aftershockStatistics.CompactEqkRupList;
 
 /**
@@ -39,6 +41,13 @@ public class ExAnalystIntervene extends ServerExecTask {
 	// Analyst intervention.
 
 	private int exec_analyst_intervene (PendingTask task) {
+
+		// Convert event ID to timeline ID if needed
+
+		int etres = sg.timeline_sup.intake_event_id_to_timeline_id (task);
+		if (etres != RESCODE_SUCCESS) {
+			return etres;
+		}
 
 		//--- Get payload and timeline status
 
@@ -162,38 +171,18 @@ public class ExAnalystIntervene extends ServerExecTask {
 			return RESCODE_TIMELINE_ANALYST_NONE;
 		}
 
-		// Fetch parameters, part 1 (control and mainshock parameters)
+		// Get mainshock parameters
 
 		ForecastParameters forecast_params = new ForecastParameters();
 
 		try {
-			forecast_params.fetch_all_1 (task.get_event_id(), payload.get_eff_analyst_params());
+			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), forecast_params);
 		}
 
 		// An exception here triggers a ComCat retry
 
-		catch (Exception e) {
-
-			// Get the next ComCat retry lag
-
-			long next_comcat_intake_lag = sg.task_disp.get_action_config().get_next_comcat_intake_lag (
-											sg.task_disp.get_action_config().int_to_lag (task.get_stage()) + 1L );
-
-			// If there is another retry, stage the task
-
-			if (next_comcat_intake_lag >= 0L) {
-				sg.task_disp.set_taskres_stage (task.get_sched_time() + next_comcat_intake_lag,
-									sg.task_disp.get_action_config().lag_to_int (next_comcat_intake_lag));
-				return RESCODE_STAGE;
-			}
-
-			// Retries exhausted, display the error and log the task
-		
-			sg.task_disp.set_display_taskres_log ("TASK-ERR: Analyst intervention failed due to ComCat failure:\n"
-				+ "event_id = " + task.get_event_id() + "\n"
-				+ "Stack trace:\n" + SimpleUtils.getStackTraceAsString(e));
-
-			return RESCODE_INTAKE_COMCAT_FAIL;
+		catch (ComcatException e) {
+			return sg.timeline_sup.intake_setup_comcat_retry (task, e);
 		}
 
 		//--- Final steps
@@ -204,7 +193,7 @@ public class ExAnalystIntervene extends ServerExecTask {
 			sg.task_disp.get_time(),
 			sg.task_disp.get_action_config(),
 			task.get_event_id(),
-			forecast_params.mainshock_time,
+			forecast_params,
 			TimelineStatus.FCORIG_ANALYST,
 			TimelineStatus.FCSTAT_ACTIVE_NORMAL);
 

@@ -66,6 +66,8 @@ public class TimelineEntry implements java.io.Serializable {
 	// In practice, every entry in the collection must have a different value of action_time
 	// (so time values may need to be altered slightly), strictly monotonically increasing
 	// in the order that entries are written.
+	// The low-order part may have a few bits of additional information, allowing searches
+	// qualified by the additional information by querying on the action_time modulus.
 
 	//@Indexed(options = @IndexOptions(name = "acttime"))
 	private long action_time;
@@ -376,12 +378,14 @@ public class TimelineEntry implements java.io.Serializable {
 
 	/**
 	 * submit_timeline_entry - Submit a timeline entry.
-	 * @param key = Record key associated with this task. Can be null to assign a new one.
+	 * @param key = Record key associated with this timeline entry. Can be null to assign a new one.
 	 * @param action_time = Time of this timeline entry, in milliseconds
-	 *                   since the epoch. Must be positive.
-	 * @param event_id = Event associated with this task, or "" if none. Cannot be null.
-	 * @param actcode = Operation code used to dispatch the task.
-	 * @param details = Further details of this task. Can be null if there are none.
+	 *                      since the epoch. Must be positive.
+	 * @param event_id = ID associated with this timeline, or "" if none. Cannot be null.
+	 *                   It may be an event ID, or an invented ID that represents the timeline
+	 *                   as distinct from any particular event ID.
+	 * @param actcode = Action code, which identifies that action that occurred on the timeline.
+	 * @param details = Further details of this timeline entry. Can be null if there are none.
 	 * @return
 	 * Returns the new entry.
 	 */
@@ -424,19 +428,19 @@ public class TimelineEntry implements java.io.Serializable {
 
 
 
-	/**
-	 * submit_timeline_entry - Submit a timeline entry.
-	 * Temporary function signature for transition.
-	 */
-	public static TimelineEntry submit_timeline_entry (RecordKey key, long action_time, String event_id,
-			int actcode, MarshalWriter details) {
-
-		String[] comcat_ids = new String[1];
-		comcat_ids[0] = event_id;
-
-		return submit_timeline_entry (key, action_time, event_id,
-			comcat_ids, actcode, details);
-	}
+//	/**
+//	 * submit_timeline_entry - Submit a timeline entry.
+//	 * Temporary function signature for transition.
+//	 */
+//	public static TimelineEntry submit_timeline_entry (RecordKey key, long action_time, String event_id,
+//			int actcode, MarshalWriter details) {
+//
+//		String[] comcat_ids = new String[1];
+//		comcat_ids[0] = event_id;
+//
+//		return submit_timeline_entry (key, action_time, event_id,
+//			comcat_ids, actcode, details);
+//	}
 
 
 

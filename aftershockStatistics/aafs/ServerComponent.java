@@ -27,7 +27,10 @@ public class ServerComponent {
 	public static final int OPCODE_INTAKE_PDL = 8;			// Intake an event, from PDL
 	public static final int OPCODE_ANALYST_INTERVENE = 9;	// Analyst intervention
 	public static final int OPCODE_UNKNOWN = 10;			// Unknown operation
-	public static final int OPCODE_MAX = 10;				// Maximum allowed opcode
+	public static final int OPCODE_ALIAS_SPLIT = 11;		// Notification of alias timeline split
+	public static final int OPCODE_ALIAS_STOP = 12;			// Notification of alias timeline stop
+	public static final int OPCODE_ALIAS_REVIVE = 13;		// Notification of alias timeline revive
+	public static final int OPCODE_MAX = 13;				// Maximum allowed opcode
 
 	// Return a string describing an opcode.
 
@@ -43,6 +46,9 @@ public class ServerComponent {
 		case OPCODE_INTAKE_PDL: return "OPCODE_INTAKE_PDL";
 		case OPCODE_ANALYST_INTERVENE: return "OPCODE_ANALYST_INTERVENE";
 		case OPCODE_UNKNOWN: return "OPCODE_UNKNOWN";
+		case OPCODE_ALIAS_SPLIT: return "OPCODE_ALIAS_SPLIT";
+		case OPCODE_ALIAS_STOP: return "OPCODE_ALIAS_STOP";
+		case OPCODE_ALIAS_REVIVE: return "OPCODE_ALIAS_REVIVE";
 		}
 		return "OPCODE_INVALID(" + x + ")";
 	}
@@ -83,7 +89,12 @@ public class ServerComponent {
 	public static final int RESCODE_TIMELINE_ANALYST_SET = 16;	// Timeline analyst data was set
 	public static final int RESCODE_TIMELINE_ANALYST_FAIL = 17;	// Timeline analyst intervention failed due to bad state
 	public static final int RESCODE_TIMELINE_ANALYST_NONE = 18;	// Timeline analyst intervention not done
-	public static final int RESCODE_MAX = 18;					// Maximum known result code
+	public static final int RESCODE_ALIAS_NOT_FOUND = 19;		// Timeline ID not found in the alias table
+	public static final int RESCODE_ALIAS_STOPPED = 20;			// Timeline ID refers to a stopped timeline in the alias table
+	public static final int RESCODE_ALIAS_NEW_EVENT = 21;		// Event ID does not appear in the alias table, can be a new timeline
+	public static final int RESCODE_ALIAS_NOT_IN_COMCAT = 22;	// Event ID is not known to Comcat, cannot query the alias table
+	public static final int RESCODE_INTAKE_FILTERED = 23;		// Event intake dropped because event did not pass intake filter
+	public static final int RESCODE_MAX = 23;					// Maximum known result code
 
 	public static final int RESCODE_DELETE = -1;				// Special result code: delete current task (without logging it)
 	public static final int RESCODE_STAGE = -2;					// Special result code: stage current task (execute it again)
@@ -110,6 +121,11 @@ public class ServerComponent {
 		case RESCODE_TIMELINE_ANALYST_SET: return "RESCODE_TIMELINE_ANALYST_SET";
 		case RESCODE_TIMELINE_ANALYST_FAIL: return "RESCODE_TIMELINE_ANALYST_FAIL";
 		case RESCODE_TIMELINE_ANALYST_NONE: return "RESCODE_TIMELINE_ANALYST_NONE";
+		case RESCODE_ALIAS_NOT_FOUND: return "RESCODE_ALIAS_NOT_FOUND";
+		case RESCODE_ALIAS_STOPPED: return "RESCODE_ALIAS_STOPPED";
+		case RESCODE_ALIAS_NEW_EVENT: return "RESCODE_ALIAS_NEW_EVENT";
+		case RESCODE_ALIAS_NOT_IN_COMCAT: return "RESCODE_ALIAS_NOT_IN_COMCAT";
+		case RESCODE_INTAKE_FILTERED: return "RESCODE_INTAKE_FILTERED";
 
 		case RESCODE_DELETE: return "RESCODE_DELETE";
 		case RESCODE_STAGE: return "RESCODE_STAGE";
@@ -123,6 +139,10 @@ public class ServerComponent {
 	// Special event ids
 
 	public static final String EVID_SHUTDOWN = "===shutdown===";	// Shutdown task
+
+	public static final String EVID_UNKNOWN = "===unknown===";		// Unknown event ID
+
+	public static final String EVID_ERROR = "===error===";	// Error status
 
 
 

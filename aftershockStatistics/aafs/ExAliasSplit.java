@@ -16,10 +16,10 @@ import scratch.aftershockStatistics.ComcatException;
 import scratch.aftershockStatistics.CompactEqkRupList;
 
 /**
- * Execute task: Intake an event for sync.
- * Author: Michael Barall 06/25/2018.
+ * Execute task: Notify alias timeline split.
+ * Author: Michael Barall 07/19/2018.
  */
-public class ExIntakeSync extends ServerExecTask {
+public class ExAliasSplit extends ServerExecTask {
 
 
 	//----- Task execution -----
@@ -32,17 +32,17 @@ public class ExIntakeSync extends ServerExecTask {
 
 	@Override
 	public int exec_task (PendingTask task) {
-		return exec_intake_sync (task);
+		return exec_alias_split (task);
 	}
 
 
 
 
-	// Intake an event for sync.
+	// Notify alias timeline split.
 
-	private int exec_intake_sync (PendingTask task) {
+	private int exec_alias_split (PendingTask task) {
 
-		// Convert event ID to timeline ID if needed
+		// Convert event ID to timeline ID if needed (should never happen for this operation)
 
 		int etres = sg.timeline_sup.intake_event_id_to_timeline_id (task);
 		if (etres != RESCODE_SUCCESS) {
@@ -51,7 +51,7 @@ public class ExIntakeSync extends ServerExecTask {
 
 		//--- Get payload and timeline status
 
-		OpIntakeSync payload = new OpIntakeSync();
+		OpAliasSplit payload = new OpAliasSplit();
 		TimelineStatus tstatus = new TimelineStatus();
 
 		int rescode = sg.timeline_sup.open_timeline (task, tstatus, payload);
@@ -59,61 +59,7 @@ public class ExIntakeSync extends ServerExecTask {
 		switch (rescode) {
 
 		case RESCODE_TIMELINE_EXISTS:
-
-			// If the state can be converted from intake to normal ...
-
-			if (tstatus.is_convertible_to_normal()) {
-
-				// Update the state
-			
-				tstatus.set_state_status_update (sg.task_disp.get_time(), TimelineStatus.FCSTAT_ACTIVE_NORMAL);
-
-				// If the command contains analyst data, save it
-
-				if (payload.f_has_analyst) {
-					tstatus.set_analyst_data  (
-						payload.analyst_id,
-						payload.analyst_remark,
-						payload.analyst_time,
-						payload.analyst_params,
-						payload.extra_forecast_lag);
-				}
-
-				// Write the new timeline entry
-
-				sg.timeline_sup.append_timeline (task, tstatus);
-
-				// Log the task
-
-				return RESCODE_TIMELINE_STATE_UPDATE;
-			}
-
-			// If the command contains analyst data and the timeline is active, set it
-
-			if (payload.f_has_analyst && tstatus.is_forecast_state()) {
-
-				// Analyst intervention
-			
-				tstatus.set_state_analyst_intervention (sg.task_disp.get_time());
-
-				// Save analyst data
-
-				tstatus.set_analyst_data  (
-					payload.analyst_id,
-					payload.analyst_remark,
-					payload.analyst_time,
-					payload.analyst_params,
-					payload.extra_forecast_lag);
-
-				// Write the new timeline entry
-
-				sg.timeline_sup.append_timeline (task, tstatus);
-
-				// Log the task
-
-				return RESCODE_TIMELINE_ANALYST_SET;
-			}
-			return rescode;
+			return RESCODE_TIMELINE_EXISTS;		// Log task as not referring to a new timeline
 
 		case RESCODE_TIMELINE_NOT_FOUND:
 			break;
@@ -138,6 +84,17 @@ public class ExIntakeSync extends ServerExecTask {
 			return sg.timeline_sup.intake_setup_comcat_retry (task, e);
 		}
 
+		//--- Intake check
+
+		// Search intake regions, using the minimum magnitude criterion
+
+		IntakeSphRegion intake_region = sg.task_disp.get_action_config().get_pdl_intake_region_for_min_mag (
+			forecast_params.mainshock_lat, forecast_params.mainshock_lon, forecast_params.mainshock_mag);
+
+		if (intake_region == null) {
+			return RESCODE_INTAKE_FILTERED;		// Log task as not passing intake filter
+		}
+
 		//--- Final steps
 
 		// Set track state
@@ -147,19 +104,8 @@ public class ExIntakeSync extends ServerExecTask {
 			sg.task_disp.get_action_config(),
 			task.get_event_id(),
 			forecast_params,
-			TimelineStatus.FCORIG_SYNC,
-			TimelineStatus.FCSTAT_ACTIVE_NORMAL);
-
-		// If the command contains analyst data, save it
-
-		if (payload.f_has_analyst) {
-			tstatus.set_analyst_data  (
-				payload.analyst_id,
-				payload.analyst_remark,
-				payload.analyst_time,
-				payload.analyst_params,
-				payload.extra_forecast_lag);
-		}
+			TimelineStatus.FCORIG_SPLIT,
+			TimelineStatus.FCSTAT_ACTIVE_INTAKE);
 
 		// Write the new timeline entry
 
@@ -178,6 +124,6 @@ public class ExIntakeSync extends ServerExecTask {
 
 	// Default constructor.
 
-	public ExIntakeSync () {}
+	public ExAliasSplit () {}
 
 }
