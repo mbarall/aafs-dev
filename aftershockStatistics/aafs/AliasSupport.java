@@ -263,17 +263,17 @@ public class AliasSupport extends ServerComponent {
 
 				// Fetch information from Comcat
 
-				ForecastParameters fparam = new ForecastParameters();
-				fparam.setup_mainshock_poll (id);
+				ForecastMainshock fcmain = new ForecastMainshock();
+				fcmain.setup_mainshock_poll (id);
 
 				// If we got it ...
 
-				if (fparam.mainshock_avail) {
+				if (fcmain.mainshock_avail) {
 
 					// Get the new assignment, which has no timeline ID or removed IDs
 
 					AliasAssignment new_assigment = new AliasAssignment();
-					new_assigment.set_comcat_ids_from_array (fparam.mainshock_id_list);
+					new_assigment.set_comcat_ids_from_array (fcmain.mainshock_id_list);
 
 					// Add all the new IDs to the output queue
 				
@@ -1287,17 +1287,17 @@ public class AliasSupport extends ServerComponent {
 	// Get mainshock parameters, given the timeline ID.
 	// Parameters:
 	//  timeline_id = Timeline ID to search for.
-	//  fparam = Forecast parameter structure, to be filled in with mainshock parameters.
+	//  fcmain = Forecast mainshock structure, to be filled in with mainshock parameters.
 	// Return values:
-	//  RESCODE_SUCCESS - Timeline exists, mainshock parameters are in fcast and
-	//    agree with the current aliases, fparam.timeline_id contains the timeline ID.
+	//  RESCODE_SUCCESS - Timeline exists, mainshock parameters are in fcmain and
+	//    agree with the current aliases, fcmain.timeline_id contains the timeline ID.
 	//  RESCODE_ALIAS_NOT_FOUND - The timeline ID is not in the alias database.
 	//  RESCODE_ALIAS_STOPPED - The timeline ID refers to a stopped timeline.
 	// The function throws ComcatException if the operation cannot be completed due to
 	// a problem with Comcat.
 	// Any other exception may indicate a problem with the database.
 
-	public int get_mainshock_for_timeline_id (String timeline_id, ForecastParameters fparam) {
+	public int get_mainshock_for_timeline_id (String timeline_id, ForecastMainshock fcmain) {
 
 		// Make 2 attempts
 
@@ -1337,21 +1337,21 @@ public class AliasSupport extends ServerComponent {
 					throw new DBCorruptException ("AliasSupport.get_mainshock_for_timeline_id: Retrieved alias family does not have a primary ID: timeline ID: " + timeline_id);
 				}
 
-				fparam.setup_mainshock_poll (db_aa.get_primary_id());
+				fcmain.setup_mainshock_poll (db_aa.get_primary_id());
 
 				// If we found the primary ID in Comcat ...
 
-				if (fparam.mainshock_avail) {
+				if (fcmain.mainshock_avail) {
 
 					// Get it into an assignment
 
 					AliasAssignment cc_aa = new AliasAssignment();
-					cc_aa.set_comcat_ids_from_array (fparam.mainshock_id_list);
+					cc_aa.set_comcat_ids_from_array (fcmain.mainshock_id_list);
 
 					// If it matches the database assignment, then we're done
 
 					if (db_aa.is_same_primary_comcat_ids (cc_aa)) {
-						fparam.timeline_id = timeline_id;
+						fcmain.timeline_id = timeline_id;
 						return RESCODE_SUCCESS;
 					}
 
@@ -1376,7 +1376,7 @@ public class AliasSupport extends ServerComponent {
 
 				// Clear the mainshock parameters available flag
 
-				fparam.mainshock_avail = false;
+				fcmain.mainshock_avail = false;
 
 				// Loop over removed IDs
 				
@@ -1389,16 +1389,16 @@ public class AliasSupport extends ServerComponent {
 				
 						// Look for it in Comcat
 
-						fparam.setup_mainshock_poll (removed_id);
+						fcmain.setup_mainshock_poll (removed_id);
 
 						// If it is known in Comcat ...
 
-						if (fparam.mainshock_avail) {
+						if (fcmain.mainshock_avail) {
 
 							// Get it into an assignment
 
 							AliasAssignment cc_aa = new AliasAssignment();
-							cc_aa.set_comcat_ids_from_array (fparam.mainshock_id_list);
+							cc_aa.set_comcat_ids_from_array (fcmain.mainshock_id_list);
 
 							// Add it to the list
 
@@ -1417,7 +1417,7 @@ public class AliasSupport extends ServerComponent {
 
 				// If we didn't find any of our removed IDs in Comcat, then the timeline is stopped
 
-				if (!( fparam.mainshock_avail )) {
+				if (!( fcmain.mainshock_avail )) {
 					return RESCODE_ALIAS_STOPPED;
 				}
 			}
@@ -1446,10 +1446,10 @@ public class AliasSupport extends ServerComponent {
 	// Get mainshock parameters, given the timeline ID.
 	// Parameters:
 	//  timeline_id = Timeline ID to search for.
-	//  fparam = Forecast parameter structure, to be filled in with mainshock parameters.
+	//  fcmain = Forecast mainshock structure, to be filled in with mainshock parameters.
 	// Returns RESCODE_SUCCESS.
-	// Return conditions: Timeline exists, mainshock parameters are in fcast and
-	//  agree with the current aliases, fparam.timeline_id contains the timeline ID.
+	// Return conditions: Timeline exists, mainshock parameters are in fcmain and
+	//  agree with the current aliases, fcmain.timeline_id contains the timeline ID.
 	// The function throws ComcatException if the operation cannot be completed due to
 	//  a problem with Comcat.
 	// The function throws ComcatException if the timeline ID refers to a stopped timeline,
@@ -1457,9 +1457,9 @@ public class AliasSupport extends ServerComponent {
 	// The function throws DBCorruptException if the timeline ID is not in the alias database.
 	// Any exception other than ComcatException may indicate a problem with the database.
 
-	public int get_mainshock_for_timeline_id_ex (String timeline_id, ForecastParameters fparam) {
+	public int get_mainshock_for_timeline_id_ex (String timeline_id, ForecastMainshock fcmain) {
 
-		int retval = get_mainshock_for_timeline_id (timeline_id, fparam);
+		int retval = get_mainshock_for_timeline_id (timeline_id, fcmain);
 
 		if (retval == RESCODE_ALIAS_NOT_FOUND) {
 			throw new DBCorruptException ("AliasSupport.get_mainshock_for_timeline_id_ex: Unknown timeline ID: " + timeline_id);
@@ -1478,18 +1478,18 @@ public class AliasSupport extends ServerComponent {
 	// Get mainshock parameters, given the event ID.
 	// Parameters:
 	//  event_id = Event ID to search for.
-	//  fparam = Forecast parameter structure, to be filled in with mainshock parameters.
+	//  fcmain = Forecast mainshock structure, to be filled in with mainshock parameters.
 	// Return values:
-	//  RESCODE_SUCCESS - Timeline exists, mainshock parameters are in fcast and
-	//    agree with the current aliases, fparam.timeline_id contains the timeline ID.
+	//  RESCODE_SUCCESS - Timeline exists, mainshock parameters are in fcmain and
+	//    agree with the current aliases, fcmain.timeline_id contains the timeline ID.
 	//  RESCODE_ALIAS_NOT_IN_COMCAT - The event ID is not known to Comcat.
 	//  RESCODE_ALIAS_NEW_EVENT - The event ID is not in the alias database, mainshock
-	//    parameters are in fcast.
+	//    parameters are in fcmain.
 	// The function throws ComcatException if the operation cannot be completed due to
 	// a problem with Comcat.
 	// Any other exception may indicate a problem with the database.
 
-	public int get_mainshock_for_event_id (String event_id, ForecastParameters fparam) {
+	public int get_mainshock_for_event_id (String event_id, ForecastMainshock fcmain) {
 
 		// Make 2 attempts
 
@@ -1497,18 +1497,18 @@ public class AliasSupport extends ServerComponent {
 
 			// Query Comcat using the event ID
 
-			fparam.setup_mainshock_poll (event_id);
+			fcmain.setup_mainshock_poll (event_id);
 
 			// If we didn't find the event in Comcat, return
 
-			if (!( fparam.mainshock_avail )) {
+			if (!( fcmain.mainshock_avail )) {
 				return RESCODE_ALIAS_NOT_IN_COMCAT;
 			}
 
 			// Get it into an assignment
 
 			AliasAssignment cc_aa = new AliasAssignment();
-			cc_aa.set_comcat_ids_from_array (fparam.mainshock_id_list);
+			cc_aa.set_comcat_ids_from_array (fcmain.mainshock_id_list);
 
 			// And an assignment list
 
@@ -1537,7 +1537,7 @@ public class AliasSupport extends ServerComponent {
 
 			if (db_aa != null) {
 				if (db_aa.is_same_primary_comcat_ids (cc_aa)) {
-					fparam.timeline_id = db_aa.get_timeline_id();
+					fcmain.timeline_id = db_aa.get_timeline_id();
 					return RESCODE_SUCCESS;
 				}
 			}
@@ -1566,10 +1566,10 @@ public class AliasSupport extends ServerComponent {
 	// Get mainshock parameters, given the event ID.
 	// Parameters:
 	//  event_id = Event ID to search for.
-	//  fparam = Forecast parameter structure, to be filled in with mainshock parameters.
+	//  fcmain = Forecast mainshock structure, to be filled in with mainshock parameters.
 	// Returns RESCODE_SUCCESS if the timeline already existed, RESCODE_ALIAS_NEW_EVENT if not.
-	// Return conditions: Timeline exists, mainshock parameters are in fcast and
-	//   agree with the current aliases, fparam.timeline_id contains the timeline ID.
+	// Return conditions: Timeline exists, mainshock parameters are in fcmain and
+	//   agree with the current aliases, fcmain.timeline_id contains the timeline ID.
 	// If there is currently no timeline for the event ID, this function creates one.
 	// The function throws ComcatException if the operation cannot be completed due to
 	//  a problem with Comcat.
@@ -1577,16 +1577,16 @@ public class AliasSupport extends ServerComponent {
 	//  permits Comcat retry logic to watch if a deleted event is reinstated.
 	// Any exception other than ComcatException may indicate a problem with the database.
 
-	public int get_mainshock_for_event_id_ex (String event_id, ForecastParameters fparam) {
+	public int get_mainshock_for_event_id_ex (String event_id, ForecastMainshock fcmain) {
 
-		int retval = get_mainshock_for_event_id (event_id, fparam);
+		int retval = get_mainshock_for_event_id (event_id, fcmain);
 
 		if (retval == RESCODE_ALIAS_NOT_IN_COMCAT) {
 			throw new ComcatException ("AliasSupport.get_mainshock_for_timeline_id_ex: Comcat does not recognize event ID: " + event_id);
 		}
 
 		if (retval == RESCODE_ALIAS_NEW_EVENT) {
-			write_mainshock_to_new_timeline (fparam);
+			write_mainshock_to_new_timeline (fcmain);
 		}
 
 		return retval;
@@ -1597,27 +1597,27 @@ public class AliasSupport extends ServerComponent {
 
 	// Write mainshock parameters into a new timeline.
 	// Parameters:
-	//  fparam = Forecast parameter structure, containing mainshock parameters.
-	// On return, fparam.timeline_id contains the new timeline name.
+	//  fcmain = Forecast mainshock structure, containing mainshock parameters.
+	// On return, fcmain.timeline_id contains the new timeline name.
 	// Any exception may indicate a problem with the database.
 	// Note: Before calling this function, you must call get_mainshock_for_event_id and
 	// receive a result code of RESCODE_ALIAS_NEW_EVENT.
 
-	public void write_mainshock_to_new_timeline (ForecastParameters fparam) {
+	public void write_mainshock_to_new_timeline (ForecastMainshock fcmain) {
 
 		// Get the timeline ID to use
 
-		String timeline_id = create_timeline_id (fparam.mainshock_event_id);
+		String timeline_id = create_timeline_id (fcmain.mainshock_event_id);
 
 		// Save it to forecast structure for return to caller
 
-		fparam.timeline_id = timeline_id;
+		fcmain.timeline_id = timeline_id;
 
 		// Get mainshock into an assignment
 
 		AliasAssignment cc_aa = new AliasAssignment();
 		cc_aa.set_timeline_id (timeline_id);
-		cc_aa.set_comcat_ids_from_array (fparam.mainshock_id_list);
+		cc_aa.set_comcat_ids_from_array (fcmain.mainshock_id_list);
 
 		// And an assignment list
 
@@ -1637,6 +1637,48 @@ public class AliasSupport extends ServerComponent {
 
 		AliasFamily.submit_alias_family (null, family_time, cc_aalist);
 		return;
+	}
+
+
+
+
+	// Given a primary ID, find the corresponding timeline ID.
+	// Parameters:
+	//  primary_id = Primary event ID to search for.
+	// Returns the timeline ID, or null if none.
+	// Note: This function returns null if the given primary ID is assigned
+	// to a timeline but as a secondary ID.
+	// Note: This function does not call Comcat nor make any changes to the database,
+	// it is strictly a database query.
+
+	public String get_timeline_id_for_primary_id (String primary_id) {
+
+		// Get the alias family for this ID
+
+		String[] ccids = new String[1];
+		ccids[0] = primary_id;
+
+		AliasFamily alfam = AliasFamily.get_recent_alias_family (0L, 0L, null, ccids, null);
+
+		if (alfam == null) {
+			return null;
+		}
+
+		// Read it into an alias assignment list
+
+		AliasAssignmentList db_aalist = alfam.get_assignments();
+
+		// Find the assignment for our primary ID
+
+		AliasAssignment db_aa = db_aalist.get_assignment_for_primary_id (primary_id);
+
+		if (db_aa == null) {
+			return null;
+		}
+	
+		// Return the timeline ID
+
+		return db_aa.get_timeline_id();
 	}
 
 

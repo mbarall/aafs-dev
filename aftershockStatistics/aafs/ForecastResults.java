@@ -121,11 +121,11 @@ public class ForecastResults {
 
 	// calc_catalog_results - Calculate catalog results.
 
-	public void calc_catalog_results (ForecastParameters params) {
+	public void calc_catalog_results (ForecastMainshock fcmain, ForecastParameters params) {
 
 		// Parameters must have mainshock, aftershock search region
 
-		if (!( params.mainshock_avail && params.aftershock_search_avail )) {
+		if (!( fcmain.mainshock_avail && params.aftershock_search_avail )) {
 			set_default_catalog_results();
 			catalog_result_avail = false;
 			return;
@@ -133,7 +133,7 @@ public class ForecastResults {
 
 		// Retrieve list of aftershocks in the search region
 
-		ObsEqkRupture mainshock = params.get_eqk_rupture();
+		ObsEqkRupture mainshock = fcmain.get_eqk_rupture();
 		//ObsEqkRupList catalog_comcat_aftershocks;		// if this isn't an object field
 
 		try {
@@ -173,7 +173,7 @@ public class ForecastResults {
 
 	// rebuild_catalog_results - Rebuild transient catalog results.
 
-	public void rebuild_catalog_results (ForecastParameters params, CompactEqkRupList the_catalog_aftershocks) {
+	public void rebuild_catalog_results (ForecastMainshock fcmain, ForecastParameters params, CompactEqkRupList the_catalog_aftershocks) {
 
 		// If there are results to rebuild ...
 
@@ -181,7 +181,7 @@ public class ForecastResults {
 
 			// Parameters must have mainshock, aftershock search region
 
-			if (!( params.mainshock_avail && params.aftershock_search_avail )) {
+			if (!( fcmain.mainshock_avail && params.aftershock_search_avail )) {
 				throw new RuntimeException("ForecastResults.rebuild_catalog_results: Invalid preconditions");
 			}
 
@@ -239,13 +239,13 @@ public class ForecastResults {
 
 	// calc_generic_results - Calculate generic results.
 
-	public void calc_generic_results (ForecastParameters params) {
+	public void calc_generic_results (ForecastMainshock fcmain, ForecastParameters params) {
 
 		// We need to have catalog results, mainshock parameters, and generic parameters
 
 		if (!( (params.generic_calc_meth != CALC_METH_SUPPRESS)
 				&& catalog_result_avail
-				&& params.mainshock_avail 
+				&& fcmain.mainshock_avail 
 				&& params.generic_avail )) {
 			set_default_generic_results();
 			generic_result_avail = false;
@@ -256,7 +256,7 @@ public class ForecastResults {
 
 			// Build the generic model
 
-			ObsEqkRupture mainshock = params.get_eqk_rupture();
+			ObsEqkRupture mainshock = fcmain.get_eqk_rupture();
 			generic_model = new RJ_AftershockModel_Generic (mainshock.getMag(), params.generic_params);
 
 			// Save the summary
@@ -302,7 +302,7 @@ public class ForecastResults {
 
 	// rebuild_generic_results - Rebuild transient generic results.
 
-	public void rebuild_generic_results (ForecastParameters params) {
+	public void rebuild_generic_results (ForecastMainshock fcmain, ForecastParameters params) {
 
 		// If there are results to rebuild ...
 
@@ -312,7 +312,7 @@ public class ForecastResults {
 
 			if (!( (params.generic_calc_meth != CALC_METH_SUPPRESS)
 					&& catalog_result_avail
-					&& params.mainshock_avail 
+					&& fcmain.mainshock_avail 
 					&& params.generic_avail )) {
 				throw new RuntimeException("ForecastResults.rebuild_generic_results: Invalid preconditions");
 			}
@@ -321,7 +321,7 @@ public class ForecastResults {
 
 				// Build the generic model
 
-				ObsEqkRupture mainshock = params.get_eqk_rupture();
+				ObsEqkRupture mainshock = fcmain.get_eqk_rupture();
 				generic_model = new RJ_AftershockModel_Generic (mainshock.getMag(), params.generic_params);
 
 			} catch (Exception e) {
@@ -368,14 +368,14 @@ public class ForecastResults {
 
 	// calc_seq_spec_results - Calculate sequence specific results.
 
-	public void calc_seq_spec_results (ForecastParameters params, boolean f_seq_spec) {
+	public void calc_seq_spec_results (ForecastMainshock fcmain, ForecastParameters params, boolean f_seq_spec) {
 
 		// We need to have catalog results, mainshock parameters, magnitude of completeness parameters, and sequence specific parameters
 
 		if (!( f_seq_spec
 				&& (params.seq_spec_calc_meth != CALC_METH_SUPPRESS)
 				&& catalog_result_avail
-				&& params.mainshock_avail 
+				&& fcmain.mainshock_avail 
 				&& params.mag_comp_avail
 				&& params.seq_spec_avail )) {
 			set_default_seq_spec_results();
@@ -387,7 +387,7 @@ public class ForecastResults {
 
 			// Build the sequence specific model
 
-			ObsEqkRupture mainshock = params.get_eqk_rupture();
+			ObsEqkRupture mainshock = fcmain.get_eqk_rupture();
 			seq_spec_model = new RJ_AftershockModel_SequenceSpecific (mainshock, catalog_aftershocks,
 				params.min_days, params.max_days, params.mag_comp_params, params.seq_spec_params);
 
@@ -434,7 +434,7 @@ public class ForecastResults {
 
 	// rebuild_seq_spec_results - Rebuild transient sequence specific results.
 
-	public void rebuild_seq_spec_results (ForecastParameters params) {
+	public void rebuild_seq_spec_results (ForecastMainshock fcmain, ForecastParameters params) {
 
 		// If there are results to rebuild ...
 
@@ -444,7 +444,7 @@ public class ForecastResults {
 
 			if (!( (params.seq_spec_calc_meth != CALC_METH_SUPPRESS)
 					&& catalog_result_avail
-					&& params.mainshock_avail 
+					&& fcmain.mainshock_avail 
 					&& params.mag_comp_avail
 					&& params.seq_spec_avail )) {
 				throw new RuntimeException("ForecastResults.rebuild_seq_spec_results: Invalid preconditions");
@@ -454,7 +454,7 @@ public class ForecastResults {
 
 				// Build the sequence specific model
 
-				ObsEqkRupture mainshock = params.get_eqk_rupture();
+				ObsEqkRupture mainshock = fcmain.get_eqk_rupture();
 				seq_spec_model = new RJ_AftershockModel_SequenceSpecific (mainshock, catalog_aftershocks,
 					params.min_days, params.max_days, params.mag_comp_params, params.seq_spec_params);
 
@@ -502,13 +502,13 @@ public class ForecastResults {
 
 	// calc_bayesian_results - Calculate bayesian results.
 
-	public void calc_bayesian_results (ForecastParameters params) {
+	public void calc_bayesian_results (ForecastMainshock fcmain, ForecastParameters params) {
 
 		// We need to have catalog results, mainshock parameters, compatible generic and sequence specific models
 
 		if (!( (params.bayesian_calc_meth != CALC_METH_SUPPRESS)
 				&& catalog_result_avail
-				&& params.mainshock_avail 
+				&& fcmain.mainshock_avail 
 				&& generic_result_avail
 				&& seq_spec_result_avail
 				&& RJ_AftershockModel_Bayesian.areModelsEquivalent(generic_model, seq_spec_model) )) {
@@ -521,7 +521,7 @@ public class ForecastResults {
 
 			// Build the bayesian model
 
-			ObsEqkRupture mainshock = params.get_eqk_rupture();
+			ObsEqkRupture mainshock = fcmain.get_eqk_rupture();
 			bayesian_model = new RJ_AftershockModel_Bayesian (generic_model, seq_spec_model);
 
 			// Save the summary
@@ -573,7 +573,7 @@ public class ForecastResults {
 
 	// rebuild_bayesian_results - Rebuild transient bayesian results.
 
-	public void rebuild_bayesian_results (ForecastParameters params) {
+	public void rebuild_bayesian_results (ForecastMainshock fcmain, ForecastParameters params) {
 
 		// If there are results to rebuild ...
 
@@ -583,7 +583,7 @@ public class ForecastResults {
 
 			if (!( (params.bayesian_calc_meth != CALC_METH_SUPPRESS)
 					&& catalog_result_avail
-					&& params.mainshock_avail 
+					&& fcmain.mainshock_avail 
 					&& generic_result_avail
 					&& seq_spec_result_avail
 					&& RJ_AftershockModel_Bayesian.areModelsEquivalent(generic_model, seq_spec_model) )) {
@@ -594,7 +594,7 @@ public class ForecastResults {
 
 				// Build the bayesian model
 
-				ObsEqkRupture mainshock = params.get_eqk_rupture();
+				ObsEqkRupture mainshock = fcmain.get_eqk_rupture();
 				bayesian_model = new RJ_AftershockModel_Bayesian (generic_model, seq_spec_model);
 
 			} catch (Exception e) {
@@ -615,23 +615,23 @@ public class ForecastResults {
 	// Calculate all results.
 	// If f_seq_spec is false, then sequence specific results are not calculated.
 
-	public void calc_all (long the_result_time, long the_advisory_lag, ForecastParameters params, boolean f_seq_spec) {
+	public void calc_all (long the_result_time, long the_advisory_lag, ForecastMainshock fcmain, ForecastParameters params, boolean f_seq_spec) {
 		result_time = the_result_time;
 		advisory_lag = the_advisory_lag;
-		calc_catalog_results (params);
-		calc_generic_results (params);
-		calc_seq_spec_results (params, f_seq_spec);
-		calc_bayesian_results (params);
+		calc_catalog_results (fcmain, params);
+		calc_generic_results (fcmain, params);
+		calc_seq_spec_results (fcmain, params, f_seq_spec);
+		calc_bayesian_results (fcmain, params);
 		return;
 	}
 
 	// Rebuild all transient results.
 
-	public void rebuild_all (ForecastParameters params, CompactEqkRupList the_catalog_aftershocks) {
-		rebuild_catalog_results (params, the_catalog_aftershocks);
-		rebuild_generic_results (params);
-		rebuild_seq_spec_results (params);
-		rebuild_bayesian_results (params);
+	public void rebuild_all (ForecastMainshock fcmain, ForecastParameters params, CompactEqkRupList the_catalog_aftershocks) {
+		rebuild_catalog_results (fcmain, params, the_catalog_aftershocks);
+		rebuild_generic_results (fcmain, params);
+		rebuild_seq_spec_results (fcmain, params);
+		rebuild_bayesian_results (fcmain, params);
 		return;
 	}
 
@@ -964,11 +964,11 @@ public class ForecastResults {
 
 			// Fetch just the mainshock info
 
-			ForecastParameters params = new ForecastParameters();
-			params.setup_mainshock_only (the_event_id);
+			ForecastMainshock fcmain = new ForecastMainshock();
+			fcmain.setup_mainshock_only (the_event_id);
 
 			System.out.println ("");
-			System.out.println (params.toString());
+			System.out.println (fcmain.toString());
 
 			// Set the forecast time to be 7 days after the mainshock
 
@@ -976,9 +976,8 @@ public class ForecastResults {
 
 			// Get parameters
 
-			params = new ForecastParameters();
-			params.fetch_all_1 (the_event_id, null);
-			params.fetch_all_2 (the_forecast_lag, null);
+			ForecastParameters params = new ForecastParameters();
+			params.fetch_all_params (the_forecast_lag, fcmain, null);
 
 			// Display them
 
@@ -988,7 +987,7 @@ public class ForecastResults {
 			// Get results
 
 			ForecastResults results = new ForecastResults();
-			results.calc_all (params.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, params, true);
+			results.calc_all (fcmain.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, fcmain, params, true);
 
 			// Display them
 
@@ -1020,11 +1019,11 @@ public class ForecastResults {
 
 			// Fetch just the mainshock info
 
-			ForecastParameters params = new ForecastParameters();
-			params.setup_mainshock_only (the_event_id);
+			ForecastMainshock fcmain = new ForecastMainshock();
+			fcmain.setup_mainshock_only (the_event_id);
 
 			System.out.println ("");
-			System.out.println (params.toString());
+			System.out.println (fcmain.toString());
 
 			// Set the forecast time to be 7 days after the mainshock
 
@@ -1032,9 +1031,8 @@ public class ForecastResults {
 
 			// Get parameters
 
-			params = new ForecastParameters();
-			params.fetch_all_1 (the_event_id, null);
-			params.fetch_all_2 (the_forecast_lag, null);
+			ForecastParameters params = new ForecastParameters();
+			params.fetch_all_params (the_forecast_lag, fcmain, null);
 
 			// Display them
 
@@ -1044,7 +1042,7 @@ public class ForecastResults {
 			// Get results
 
 			ForecastResults results = new ForecastResults();
-			results.calc_all (params.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, params, true);
+			results.calc_all (fcmain.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, fcmain, params, true);
 
 			// Display them
 
@@ -1078,7 +1076,7 @@ public class ForecastResults {
 
 			// Rebuild transient data
 
-			results.rebuild_all (params, saved_catalog_aftershocks);
+			results.rebuild_all (fcmain, params, saved_catalog_aftershocks);
 
 			System.out.println ("");
 			System.out.println (results.toString());

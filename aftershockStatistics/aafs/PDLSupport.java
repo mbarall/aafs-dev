@@ -45,8 +45,8 @@ public class PDLSupport extends ServerComponent {
 
 		// The event network and code
 
-		String eventNetwork = tstatus.forecast_params.mainshock_network;
-		String eventCode = tstatus.forecast_params.mainshock_code;
+		String eventNetwork = tstatus.forecast_mainshock.mainshock_network;
+		String eventCode = tstatus.forecast_mainshock.mainshock_code;
 
 		// The event ID, which for us identifies the timeline
 

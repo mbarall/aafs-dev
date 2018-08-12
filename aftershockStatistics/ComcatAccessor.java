@@ -127,6 +127,16 @@ public class ComcatAccessor {
 	// Value to use for no minimum magnitude in Comcat searches.
 
 	public static final double COMCAT_NO_MIN_MAG = -10.0;
+
+	// Default maximum depth for Comcat searches, in kilometers.
+	// This is chosen to respect the limits for both Comcat (1000.0 km) and OpenSHA (700.0).
+
+	public static final double DEFAULT_MAX_DEPTH = 700.0;
+
+	// Default minimum depth for Comcat searches, in kilometers.
+	// This is chosen to respect the limits for both Comcat (-100.0 km) and OpenSHA (-5.0).
+
+	public static final double DEFAULT_MIN_DEPTH = 0.0;
 	
 
 
@@ -1228,8 +1238,8 @@ public class ComcatAccessor {
 
 				// Call Comcat
 
-				double minDepth = 0.0;
-				double maxDepth = 700.0;
+				double minDepth = DEFAULT_MIN_DEPTH;
+				double maxDepth = DEFAULT_MAX_DEPTH;
 				boolean wrapLon = false;
 				int max_calls = 0;
 

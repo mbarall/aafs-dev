@@ -40,6 +40,10 @@ public class ServerGroup extends ServerComponent {
 
 	public BackupSupport backup_sup;
 
+	// Poll support.
+
+	public PollSupport poll_sup;
+
 	// Dispatch table.
 
 	public ServerExecTask[] dispatch_table;
@@ -59,6 +63,7 @@ public class ServerGroup extends ServerComponent {
 		this.alias_sup      = null;
 		this.pdl_sup        = null;
 		this.backup_sup     = null;
+		this.poll_sup       = null;
 
 		this.dispatch_table = null;
 	}
@@ -97,6 +102,9 @@ public class ServerGroup extends ServerComponent {
 		this.backup_sup     = new BackupSupport();
 		this.backup_sup.setup (this);
 
+		this.poll_sup       = new PollSupport();
+		this.poll_sup.setup (this);
+
 		// Set up the dispatch table
 
 		dispatch_table = new ServerExecTask[OPCODE_MAX + 1];
@@ -118,6 +126,10 @@ public class ServerGroup extends ServerComponent {
 		dispatch_table[OPCODE_ALIAS_SPLIT      ] = new ExAliasSplit();
 		dispatch_table[OPCODE_ALIAS_STOP       ] = new ExAliasStop();
 		dispatch_table[OPCODE_ALIAS_REVIVE     ] = new ExAliasRevive();
+		dispatch_table[OPCODE_INTAKE_POLL      ] = new ExIntakePoll();
+		dispatch_table[OPCODE_POLL_COMCAT_RUN  ] = new ExPollComcatRun();
+		dispatch_table[OPCODE_POLL_COMCAT_START] = new ExPollComcatStart();
+		dispatch_table[OPCODE_POLL_COMCAT_STOP ] = new ExPollComcatStop();
 
 		for (int i = 0; i <= OPCODE_MAX; ++i) {
 			if (dispatch_table[i] != null) {

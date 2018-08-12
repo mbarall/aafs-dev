@@ -6,6 +6,8 @@ import java.util.Arrays;
 import java.io.Reader;
 import java.io.FileReader;
 import java.io.BufferedReader;
+import java.io.Closeable;
+import java.io.IOException;
 
 import scratch.aftershockStatistics.aafs.MongoDBUtil;
 
@@ -27,6 +29,10 @@ import scratch.aftershockStatistics.util.MarshalImpJsonReader;
 import scratch.aftershockStatistics.util.MarshalImpJsonWriter;
 import scratch.aftershockStatistics.util.MarshalReader;
 import scratch.aftershockStatistics.util.MarshalWriter;
+
+import scratch.aftershockStatistics.util.SimpleUtils;
+import scratch.aftershockStatistics.util.TimeSplitOutputStream;
+import scratch.aftershockStatistics.util.ConsoleRedirector;
 
 import gov.usgs.earthquake.product.Product;
 import scratch.aftershockStatistics.pdl.PDLProductBuilderOaf;
@@ -693,11 +699,16 @@ public class ServerTest {
 
 	public static void test16(String[] args) {
 
-		// No additional arguments
+		// Zero or one additional arguments
 
-		if (args.length != 1) {
+		if (args.length < 1 || args.length > 2) {
 			System.err.println ("ServerTest : Invalid 'test16' subcommand");
 			return;
+		}
+
+		boolean f_adjust_time = false;
+		if (args.length >= 2) {
+			f_adjust_time = Boolean.parseBoolean (args[1]);
 		}
 
 		// Get a task dispatcher
@@ -708,7 +719,7 @@ public class ServerTest {
 
 		boolean f_verbose = true;
 
-		dispatcher.run_next_task (f_verbose);
+		dispatcher.run_next_task (f_verbose, f_adjust_time);
 
 		return;
 	}
@@ -720,7 +731,7 @@ public class ServerTest {
 
 	public static void test17(String[] args) {
 
-		// Tthree additional arguments
+		// Three additional arguments
 
 		if (args.length != 4) {
 			System.err.println ("ServerTest : Invalid 'test17' subcommand");
@@ -1809,7 +1820,7 @@ public class ServerTest {
 			MongoDBUtil mongo_instance = new MongoDBUtil();
 		){
 
-			// Get the list of matching timeline entries
+			// Get the list of matching alias family entries
 
 			List<AliasFamily> entries = AliasFamily.get_alias_family_range (family_time_lo, family_time_hi, event_id, comcat_ids, family_time_div_rem);
 
@@ -1866,7 +1877,7 @@ public class ServerTest {
 		){
 			try (
 
-				// Get an iterator over matching timeline entries
+				// Get an iterator over matching alias family entries
 
 				RecordIterator<AliasFamily> entries = AliasFamily.fetch_alias_family_range (family_time_lo, family_time_hi, event_id, comcat_ids, family_time_div_rem);
 			){
@@ -1923,7 +1934,7 @@ public class ServerTest {
 			MongoDBUtil mongo_instance = new MongoDBUtil();
 		){
 
-			// Get the list of matching timeline entries
+			// Get the list of matching alias family entries
 
 			List<AliasFamily> entries = AliasFamily.get_alias_family_range (family_time_lo, family_time_hi, event_id, comcat_ids, family_time_div_rem);
 
@@ -1981,7 +1992,7 @@ public class ServerTest {
 			MongoDBUtil mongo_instance = new MongoDBUtil();
 		){
 
-			// Get the list of matching timeline entries
+			// Get the list of matching alias family entries
 
 			List<AliasFamily> entries = AliasFamily.get_alias_family_range (family_time_lo, family_time_hi, event_id, comcat_ids, family_time_div_rem);
 
@@ -2037,7 +2048,7 @@ public class ServerTest {
 			MongoDBUtil mongo_instance = new MongoDBUtil();
 		){
 
-			// Get the most recent matching timeline entry
+			// Get the most recent matching alias family entry
 
 			AliasFamily entry = AliasFamily.get_recent_alias_family (family_time_lo, family_time_hi, event_id, comcat_ids, family_time_div_rem);
 
@@ -2170,9 +2181,9 @@ public class ServerTest {
 
 			// Get timeline alias information
 
-			ForecastParameters fparam = new ForecastParameters();
+			ForecastMainshock fcmain = new ForecastMainshock();
 
-			int rescode = sg.alias_sup.get_mainshock_for_timeline_id (timeline_id, fparam);
+			int rescode = sg.alias_sup.get_mainshock_for_timeline_id (timeline_id, fcmain);
 
 			// Write the result code
 
@@ -2181,7 +2192,7 @@ public class ServerTest {
 			// Display mainshock info if we got it
 
 			if (rescode == ServerComponent.RESCODE_SUCCESS) {
-				System.out.println (fparam.toString());
+				System.out.println (fcmain.toString());
 			}
 		}
 
@@ -2221,9 +2232,9 @@ public class ServerTest {
 
 			// Get timeline alias information
 
-			ForecastParameters fparam = new ForecastParameters();
+			ForecastMainshock fcmain = new ForecastMainshock();
 
-			int rescode = sg.alias_sup.get_mainshock_for_event_id (event_id, fparam);
+			int rescode = sg.alias_sup.get_mainshock_for_event_id (event_id, fcmain);
 
 			// Write the result code
 
@@ -2232,7 +2243,7 @@ public class ServerTest {
 			// Display mainshock info if we got it
 
 			if (rescode == ServerComponent.RESCODE_SUCCESS || rescode == ServerComponent.RESCODE_ALIAS_NEW_EVENT) {
-				System.out.println (fparam.toString());
+				System.out.println (fcmain.toString());
 			}
 		}
 
@@ -2272,9 +2283,9 @@ public class ServerTest {
 
 			// Get timeline alias information
 
-			ForecastParameters fparam = new ForecastParameters();
+			ForecastMainshock fcmain = new ForecastMainshock();
 
-			int rescode = sg.alias_sup.get_mainshock_for_event_id (event_id, fparam);
+			int rescode = sg.alias_sup.get_mainshock_for_event_id (event_id, fcmain);
 
 			// Write the result code
 
@@ -2283,15 +2294,368 @@ public class ServerTest {
 			// If it's a new event, create the timeline
 
 			if (rescode == ServerComponent.RESCODE_ALIAS_NEW_EVENT) {
-				sg.alias_sup.write_mainshock_to_new_timeline (fparam);
+				sg.alias_sup.write_mainshock_to_new_timeline (fcmain);
 			}
 
 			// Display mainshock info if we got it
 
 			if (rescode == ServerComponent.RESCODE_SUCCESS || rescode == ServerComponent.RESCODE_ALIAS_NEW_EVENT) {
-				System.out.println (fparam.toString());
+				System.out.println (fcmain.toString());
 			}
 		}
+
+		return;
+	}
+
+
+
+
+	// Test #46 - Test console redirection and time split output streams.
+
+	public static void test46(String[] args) throws IOException {
+
+		// No additional arguments
+
+		if (args.length != 1) {
+			System.err.println ("ServerTest : Invalid 'test46' subcommand");
+			return;
+		}
+
+		long day_millis = 86400000L;
+
+		long day_1 = System.currentTimeMillis();
+		long day_2 = day_1 + day_millis;
+		long day_3 = day_2 + day_millis;
+		long day_4 = day_3 + day_millis;
+		long day_5 = day_4 + day_millis;
+		long day_6 = day_5 + day_millis;
+		long day_7 = day_6 + day_millis;
+		long day_8 = day_7 + day_millis;
+
+		String pattern_test = "'logtest/logs/'yyyy-MM-dd'-test.log'";
+		String pattern_out = "'logtest/logs/'yyyy-MM-dd'-out.log'";
+		String pattern_err = "'logtest/logs/'yyyy-MM-dd'-err.log'";
+
+		System.out.println ("Start time = " + day_1 + " (" + SimpleUtils.time_to_string (day_1) + ")");
+
+		// No redirection
+
+		System.out.println ("con - out - line 1");
+		System.err.println ("con - err - line 1");
+
+		// Redirection and write within a single day, create directories
+
+		try (
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop (pattern_test, day_1);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
+		){
+			System.out.println ("day 1 - out - line 2");
+			System.err.println ("day 1 - err - line 2");
+			System.out.println ("day 1 - out - line 3");
+			System.err.println ("day 1 - err - line 3");
+
+			con_tsop.redirect (day_1);
+		
+			System.out.println ("day 1 - out - line 4");
+			System.err.println ("day 1 - err - line 4");
+			System.out.println ("day 1 - out - line 5");
+			System.err.println ("day 1 - err - line 5");
+		}
+
+		// Redirection and write within two days, append to file for first day
+
+		try (
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop (pattern_test, day_1);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
+		){
+			System.out.println ("day 1 - out - line 6");
+			System.err.println ("day 1 - err - line 6");
+			System.out.println ("day 1 - out - line 7");
+			System.err.println ("day 1 - err - line 7");
+
+			con_tsop.redirect (day_2);
+		
+			System.out.println ("day 2 - out - line 8");
+			System.err.println ("day 2 - err - line 8");
+			System.out.println ("day 2 - out - line 9");
+			System.err.println ("day 2 - err - line 9");
+		}
+
+		// Redirection and write within three days, test lazy open by not writing for two days
+
+		try (
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop (pattern_test, day_3);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
+		){
+			con_tsop.redirect (day_4);
+		
+			System.out.println ("day 4 - out - line 10");
+			System.err.println ("day 4 - err - line 10");
+
+			con_tsop.redirect (day_4);
+		
+			System.out.println ("day 4 - out - line 11");
+			System.err.println ("day 4 - err - line 11");
+
+			con_tsop.redirect (day_5);
+		}
+
+		// Redirection and write within two days, with tee and separated files
+
+		try (
+			TimeSplitOutputStream con_tsop_out = TimeSplitOutputStream.make_tsop (pattern_out, day_6);
+			TimeSplitOutputStream con_tsop_err = TimeSplitOutputStream.make_tsop (pattern_err, day_6);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop_out, con_tsop_err, false, true);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop_out,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop_err,
+										ConsoleRedirector.get_new_err (con_red));
+		){
+			System.out.println ("day 6 - tee - out - line 12");
+			System.err.println ("day 6 - tee - err - line 12");
+			System.out.println ("day 6 - tee - out - line 13");
+			System.err.println ("day 6 - tee - err - line 13");
+
+			con_tsop_out.redirect (day_7);
+			con_tsop_err.redirect (day_7);
+		
+			System.out.println ("day 7 - tee - out - line 14");
+			System.err.println ("day 7 - tee - err - line 14");
+
+			con_tsop_out.redirect (day_7);
+			con_tsop_err.redirect (day_7);
+
+			System.out.println ("day 7 - tee - out - line 15");
+			System.err.println ("day 7 - tee - err - line 15");
+		}
+
+		// Redirection with empty pattern
+
+		try (
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop ("", day_8);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
+		){
+			System.out.println ("day 8 - empty - out - line 16");
+			System.err.println ("day 8 - empty - err - line 16");
+			System.out.println ("day 8 - empty - out - line 17");
+			System.err.println ("day 8 - empty - err - line 17");
+		}
+
+		// No redirection
+
+		System.out.println ("con - out - line 18");
+		System.err.println ("con - err - line 18");
+
+		return;
+	}
+
+
+
+
+	// Test #47 - Delete all database tables, allowing a fresh start.
+
+	public static void test47(String[] args) throws Exception {
+
+		// Three additional arguments
+
+		if (args.length != 4) {
+			System.err.println ("ServerTest : Invalid 'test47' subcommand");
+			return;
+		}
+
+		if (!( args[1].equals ("delete")
+			&& args[2].equals ("all")
+			&& args[3].equals ("tables") )) {
+			System.err.println ("ServerTest : Wrong confirmation for 'test47' subcommand");
+			return;
+		}
+
+		// Connect to MongoDB
+
+		try (
+			MongoDBUtil mongo_instance = new MongoDBUtil();
+		){
+			
+			System.out.println ("ServerTest : Deleting all database tables");
+
+			// Get the list of task entries and delete
+
+			List<PendingTask> task_entries = PendingTask.get_task_entry_range (0L, 0L, null);
+		
+			System.out.println ("ServerTest : Deleting " + task_entries.size() + " task entries");
+
+			for (PendingTask entry : task_entries) {
+				PendingTask.delete_task (entry);
+			}
+
+			// Get the list of log entries and delete
+
+			List<LogEntry> log_entries = LogEntry.get_log_entry_range (0L, 0L, null);
+		
+			System.out.println ("ServerTest : Deleting " + log_entries.size() + " log entries");
+
+			for (LogEntry entry : log_entries) {
+				LogEntry.delete_log_entry (entry);
+			}
+
+			// Get the list of catalog snapshots and delete
+
+			List<CatalogSnapshot> cat_entries = CatalogSnapshot.get_catalog_snapshot_range (0L, 0L, null);
+		
+			System.out.println ("ServerTest : Deleting " + cat_entries.size() + " catalog snapshot entries");
+
+			for (CatalogSnapshot entry : cat_entries) {
+				CatalogSnapshot.delete_catalog_snapshot (entry);
+			}
+
+			// Get the list of timeline entries and delete
+
+			List<TimelineEntry> tline_entries = TimelineEntry.get_timeline_entry_range (0L, 0L, null, null, null);
+		
+			System.out.println ("ServerTest : Deleting " + tline_entries.size() + " timeline entries");
+
+			for (TimelineEntry entry : tline_entries) {
+				TimelineEntry.delete_timeline_entry (entry);
+			}
+
+			// Get the list of alias family entries and delete
+
+			List<AliasFamily> alfam_entries = AliasFamily.get_alias_family_range (0L, 0L, null, null, null);
+		
+			System.out.println ("ServerTest : Deleting " + alfam_entries.size() + " alias family entries");
+
+			for (AliasFamily entry : alfam_entries) {
+				AliasFamily.delete_alias_family (entry);
+			}
+			
+			System.out.println ("ServerTest : Deleted all database tables");
+
+		}
+
+		return;
+	}
+
+
+
+
+	// Test #48 - Post a task to start polling Comcat.
+
+	public static void test48(String[] args) {
+
+		// No additional arguments
+
+		if (args.length != 1) {
+			System.err.println ("ServerTest : Invalid 'test48' subcommand");
+			return;
+		}
+
+		String event_id = ServerComponent.EVID_POLL;
+
+		OpPollComcatStart payload = new OpPollComcatStart();
+		payload.setup ();
+
+		// Post the task
+
+		int opcode = TaskDispatcher.OPCODE_POLL_COMCAT_START;
+		int stage = 0;
+
+		long the_time = ServerClock.get_time();
+
+		boolean result = TaskDispatcher.post_task (event_id, the_time, the_time, "ServerTest", opcode, stage, payload.marshal_task());
+
+		// Display result
+
+		System.out.println ("Post poll Comcat start result: " + result);
+
+		return;
+	}
+
+
+
+
+	// Test #49 - Post a task to stop polling Comcat.
+
+	public static void test49(String[] args) {
+
+		// No additional arguments
+
+		if (args.length != 1) {
+			System.err.println ("ServerTest : Invalid 'test49' subcommand");
+			return;
+		}
+
+		String event_id = ServerComponent.EVID_POLL;
+
+		OpPollComcatStop payload = new OpPollComcatStop();
+		payload.setup ();
+
+		// Post the task
+
+		int opcode = TaskDispatcher.OPCODE_POLL_COMCAT_STOP;
+		int stage = 0;
+
+		long the_time = ServerClock.get_time();
+
+		boolean result = TaskDispatcher.post_task (event_id, the_time, the_time, "ServerTest", opcode, stage, payload.marshal_task());
+
+		// Display result
+
+		System.out.println ("Post poll Comcat stop result: " + result);
+
+		return;
+	}
+
+
+
+
+	// Test #50 - Post an analyst intervention task.
+
+	public static void test50(String[] args) {
+
+		// Three additional arguments
+
+		if (args.length != 4) {
+			System.err.println ("ServerTest : Invalid 'test50' subcommand");
+			return;
+		}
+
+		String event_id = args[1];
+		int state_change = Integer.parseInt(args[2]);
+		boolean f_create_timeline = Boolean.parseBoolean (args[3]);
+
+		// Set up the payload
+
+		OpAnalystIntervene payload = new OpAnalystIntervene();
+		payload.setup (state_change, f_create_timeline);
+
+		// Post the task
+
+		int opcode = TaskDispatcher.OPCODE_ANALYST_INTERVENE;
+		int stage = 0;
+
+		long the_time = ServerClock.get_time();
+
+		boolean result = TaskDispatcher.post_task (event_id, the_time, the_time, "ServerTest", opcode, stage, payload.marshal_task());
+
+		// Display result
+
+		System.out.println ("Post analyst intervention result: " + result);
 
 		return;
 	}
@@ -2555,8 +2919,10 @@ public class ServerTest {
 
 		// Subcommand : Test #16
 		// Command format:
-		//  test16
+		//  test16  [f_adjust_time]
 		// Execute the next task.
+		// If f_adjust_time is "true" then adjust clock to be the execution time of the task.
+		// If f_adjust_time is omitted then the default value is "false".
 
 		if (args[0].equalsIgnoreCase ("test16")) {
 
@@ -3063,6 +3429,90 @@ public class ServerTest {
 
 			try {
 				test45(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+		// Subcommand : Test #46
+		// Command format:
+		//  test46
+		// Test console redirection and time split output streams.
+
+		if (args[0].equalsIgnoreCase ("test46")) {
+
+			try {
+				test46(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+		// Subcommand : Test #47
+		// Command format:
+		//  test47 "delete" "all" "tables"
+		// Delete all the database tables, allowing a fresh start.
+
+		if (args[0].equalsIgnoreCase ("test47")) {
+
+			try {
+				test47(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+		// Subcommand : Test #48
+		// Command format:
+		//  test48
+		// Post a task to start polling Comcat.
+
+		if (args[0].equalsIgnoreCase ("test48")) {
+
+			try {
+				test48(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+		// Subcommand : Test #49
+		// Command format:
+		//  test49
+		// Post a task to stop polling Comcat.
+
+		if (args[0].equalsIgnoreCase ("test49")) {
+
+			try {
+				test49(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+
+			return;
+		}
+
+		// Subcommand : Test #50
+		// Command format:
+		//  test50  event_id  state_change  f_create_timeline
+		// Post a task for analyst intervention.
+		// The event_id can be either a Comcat ID or a timeline ID.
+		// The state_change is an integer:
+		//  1 = no change, 2 = start timeline, 3 = stop timeline, 4 = withdraw timeline.
+		// The f_create_timeline is true to create the timeline if it doesn't exist.
+
+		if (args[0].equalsIgnoreCase ("test50")) {
+
+			try {
+				test50(args);
             } catch (Exception e) {
                 e.printStackTrace();
 			}

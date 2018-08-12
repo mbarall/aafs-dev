@@ -2,7 +2,7 @@
   "version":1,
   "regimes":[
     {"regime":"WORLD"     , "params":{"MagCompPage_Parameters":2001, "magCat":4.50, "capG":0.25, "capH":1.00, "magSample":3.00, "radiusSample":1.00, "magCentroid":3.50, "radiusCentroid":1.00}},
-    {"regime":"CALIFORNIA", "params":{"MagCompPage_Parameters":2001, "magCat":2.50, "capG":0.25, "capH":1.00, "magSample":2.00, "radiusSample":1.00, "magCentroid":2.50, "radiusCentroid":1.00}},
+    {"regime":"CALIFORNIA", "params":{"MagCompPage_Parameters":2001, "magCat":2.50, "capG":0.25, "capH":1.00, "magSample":2.00, "radiusSample":1.00, "magCentroid":3.00, "radiusCentroid":1.00}},
     {"regime":"ALASKA"    , "params":{"MagCompPage_Parameters":2001, "magCat":3.00, "capG":0.25, "capH":1.00, "magSample":2.50, "radiusSample":1.00, "magCentroid":3.00, "radiusCentroid":1.00}},
     {"regime":"USA"       , "params":{"MagCompPage_Parameters":2001, "magCat":3.00, "capG":0.25, "capH":1.00, "magSample":2.50, "radiusSample":1.00, "magCentroid":3.00, "radiusCentroid":1.00}}
   ],
@@ -54,10 +54,10 @@
         "ClassType":14001,
         "SphRegionMercPolygon":1,
         "vertex_list":[
-          {"lat":49.4000, "lon":-124.8000},
-          {"lat":24.5000, "lon":-124.8000},
-          {"lat":24.5000, "lon":-66.9000},
-          {"lat":49.4000, "lon":-66.9000}
+          {"lat":50.0000, "lon":-125.0000},
+          {"lat":24.6000, "lon":-125.0000},
+          {"lat":24.6000, "lon":-65.0000},
+          {"lat":50.0000, "lon":-65.0000}
         ]
       }
     }

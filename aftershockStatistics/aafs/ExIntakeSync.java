@@ -70,13 +70,8 @@ public class ExIntakeSync extends ServerExecTask {
 
 				// If the command contains analyst data, save it
 
-				if (payload.f_has_analyst) {
-					tstatus.set_analyst_data  (
-						payload.analyst_id,
-						payload.analyst_remark,
-						payload.analyst_time,
-						payload.analyst_params,
-						payload.extra_forecast_lag);
+				if (payload.analyst_options != null) {
+					tstatus.set_analyst_data (payload.analyst_options);
 				}
 
 				// Write the new timeline entry
@@ -90,7 +85,7 @@ public class ExIntakeSync extends ServerExecTask {
 
 			// If the command contains analyst data and the timeline is active, set it
 
-			if (payload.f_has_analyst && tstatus.is_forecast_state()) {
+			if (payload.analyst_options != null && tstatus.is_forecast_state()) {
 
 				// Analyst intervention
 			
@@ -98,12 +93,7 @@ public class ExIntakeSync extends ServerExecTask {
 
 				// Save analyst data
 
-				tstatus.set_analyst_data  (
-					payload.analyst_id,
-					payload.analyst_remark,
-					payload.analyst_time,
-					payload.analyst_params,
-					payload.extra_forecast_lag);
+				tstatus.set_analyst_data (payload.analyst_options);
 
 				// Write the new timeline entry
 
@@ -126,10 +116,10 @@ public class ExIntakeSync extends ServerExecTask {
 
 		// Get mainshock parameters
 
-		ForecastParameters forecast_params = new ForecastParameters();
+		ForecastMainshock fcmain = new ForecastMainshock();
 
 		try {
-			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), forecast_params);
+			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), fcmain);
 		}
 
 		// An exception here triggers a ComCat retry
@@ -146,19 +136,14 @@ public class ExIntakeSync extends ServerExecTask {
 			sg.task_disp.get_time(),
 			sg.task_disp.get_action_config(),
 			task.get_event_id(),
-			forecast_params,
+			fcmain,
 			TimelineStatus.FCORIG_SYNC,
 			TimelineStatus.FCSTAT_ACTIVE_NORMAL);
 
 		// If the command contains analyst data, save it
 
-		if (payload.f_has_analyst) {
-			tstatus.set_analyst_data  (
-				payload.analyst_id,
-				payload.analyst_remark,
-				payload.analyst_time,
-				payload.analyst_params,
-				payload.extra_forecast_lag);
+		if (payload.analyst_options != null) {
+			tstatus.set_analyst_data (payload.analyst_options);
 		}
 
 		// Write the new timeline entry

@@ -241,6 +241,144 @@ public class ServerCmd {
 
 
 
+	// cmd_start_pdl - Run the server, and accept PDL options on the command line.
+
+	public static void cmd_start_pdl(String[] args) {
+
+		// Any number of additional arguments
+
+		if (args.length < 1) {
+			System.err.println ("ServerCmd : Invalid 'start_pdl' subcommand");
+			return;
+		}
+
+		// Read PDL options
+
+		int lo = 1;
+		boolean f_config = true;
+		boolean f_send = false;
+		int pdl_default = ServerConfigFile.PDLOPT_UNSPECIFIED;
+
+		if (PDLCmd.exec_pdl_cmd (args, lo, f_config, f_send, pdl_default)) {
+			System.out.println ("AAFS server not started due to error in PDL options.");
+			return;
+		}
+
+		// Say hello
+			
+		System.out.println ("AAFS server is starting.");
+
+		// Get a task dispatcher
+
+		TaskDispatcher dispatcher = new TaskDispatcher();
+
+		// Run it
+
+		dispatcher.run();
+
+		// Display final status
+
+		int dispatcher_state = dispatcher.get_dispatcher_state();
+		if (dispatcher_state == TaskDispatcher.STATE_SHUTDOWN) {
+			System.out.println ("AAFS server exited normally.");
+		} else {
+			System.out.println ("Server exited abnormally, final state code = " + dispatcher_state);
+		}
+
+		return;
+	}
+
+
+
+
+	// cmd_start_comcat_poll - Tell the server to start polling Comcat.
+
+	public static void cmd_start_comcat_poll(String[] args) {
+
+		// No additional arguments
+
+		if (args.length != 1) {
+			System.err.println ("ServerCmd : Invalid 'cmd_start_comcat_poll' subcommand");
+			return;
+		}
+
+		String event_id = ServerComponent.EVID_POLL;
+
+		OpPollComcatStart payload = new OpPollComcatStart();
+		payload.setup ();
+
+		// Say hello
+
+		System.out.println ("Sending command to start polling Comcat");
+
+		// Post the task
+
+		int opcode = TaskDispatcher.OPCODE_POLL_COMCAT_START;
+		int stage = 0;
+
+		long the_time = ServerClock.get_time();
+
+		boolean result = TaskDispatcher.post_task (event_id, the_time, the_time, "ServerCmd", opcode, stage, payload.marshal_task());
+
+		// Display result
+
+		if (result) {
+			System.out.println ("Command to start polling Comcat was sent to AAFS server.");
+			System.out.println ("It takes about 30 seconds for the command to take effect.");
+		} else {
+			System.out.println ("Unable to send AAFS server command to start polling Comcat.");
+		}
+
+		return;
+	}
+
+
+
+
+	// cmd_stop_comcat_poll - Tell the server to stop polling Comcat.
+
+	public static void cmd_stop_comcat_poll(String[] args) {
+
+		// No additional arguments
+
+		if (args.length != 1) {
+			System.err.println ("ServerCmd : Invalid 'cmd_stop_comcat_poll' subcommand");
+			return;
+		}
+
+		String event_id = ServerComponent.EVID_POLL;
+
+		OpPollComcatStop payload = new OpPollComcatStop();
+		payload.setup ();
+
+		// Say hello
+
+		System.out.println ("Sending command to stop polling Comcat");
+
+		// Post the task
+
+		int opcode = TaskDispatcher.OPCODE_POLL_COMCAT_STOP;
+		int stage = 0;
+
+		long the_time = ServerClock.get_time();
+
+		boolean result = TaskDispatcher.post_task (event_id, the_time, the_time, "ServerCmd", opcode, stage, payload.marshal_task());
+
+		// Display result
+
+		if (result) {
+			System.out.println ("Command to stop polling Comcat was sent to AAFS server.");
+			System.out.println ("It takes about 30 seconds for the command to take effect.");
+		} else {
+			System.out.println ("Unable to send AAFS server command to stop polling Comcat.");
+		}
+
+		return;
+	}
+
+
+
+
 	// Entry point.
 	
 	public static void main(String[] args) {
@@ -311,6 +449,45 @@ public class ServerCmd {
 		case "add_event":
 			try {
 				cmd_add_event(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+			return;
+
+		// Subcommand : start_pdl
+		// Command format:
+		//  start_pdl  [pdl_option...]
+		// Run the server, after parsing PDL options.
+
+		case "start_pdl":
+			try {
+				cmd_start_pdl(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+			return;
+
+		// Subcommand : start_comcat_poll
+		// Command format:
+		//  start_comcat_poll 
+		// Post a command to start polling Comcat.
+
+		case "start_comcat_poll":
+			try {
+				cmd_start_comcat_poll(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+			return;
+
+		// Subcommand : stop_comcat_poll
+		// Command format:
+		//  stop_comcat_poll
+		// Post a command to stop polling Comcat.
+
+		case "stop_comcat_poll":
+			try {
+				cmd_stop_comcat_poll(args);
             } catch (Exception e) {
                 e.printStackTrace();
 			}

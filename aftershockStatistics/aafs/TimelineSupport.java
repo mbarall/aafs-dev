@@ -376,7 +376,8 @@ public class TimelineSupport extends ServerComponent {
 			break;
 
 		default:
-			delete_delayed_timeline_tasks (task.get_event_id());
+			//delete_delayed_timeline_tasks (task.get_event_id());
+			delete_delayed_timeline_tasks (tstatus.event_id);
 			break;
 		}
 
@@ -419,7 +420,9 @@ public class TimelineSupport extends ServerComponent {
 			+ "event_id = " + tstatus.event_id + "\n"
 			+ "actcode = " + tstatus.get_actcode_as_string () + "\n"
 			+ "action_time = " + tstatus.action_time + "\n"
-			+ "fc_status = " + tstatus.get_fc_status_as_string ());
+			+ "fc_status = " + tstatus.get_fc_status_as_string () + "\n"
+			+ "pdl_status = " + tstatus.get_pdl_status_as_string () + "\n"
+			+ "fc_result = " + tstatus.get_fc_result_as_string ());
 
 		// Issue any new delayed command that is needed
 
@@ -464,7 +467,7 @@ public class TimelineSupport extends ServerComponent {
 
 			// Get next forecast lag from configured schedule
 
-			next_forecast_lag = sg.task_disp.get_action_config().get_next_forecast_lag (min_lag);
+			next_forecast_lag = sg.task_disp.get_action_config().get_next_forecast_lag (min_lag, tstatus.analyst_options.max_forecast_lag);
 
 			// If no next forecast lag on the configured schedule ...
 
@@ -472,12 +475,12 @@ public class TimelineSupport extends ServerComponent {
 			
 				// Use the requested extra forecast lag, if any
 
-				if (tstatus.extra_forecast_lag >= 0L) {
+				if (tstatus.analyst_options.extra_forecast_lag >= 0L) {
 
 					// Make sure the value is a multiple of the lag unit, and greater than the last lag
 
 					next_forecast_lag = 
-						sg.task_disp.get_action_config().floor_unit_lag (tstatus.extra_forecast_lag, min_extra_lag);
+						sg.task_disp.get_action_config().floor_unit_lag (tstatus.analyst_options.extra_forecast_lag, min_extra_lag);
 				} else {
 					next_forecast_lag = -1L;
 				}
@@ -489,12 +492,12 @@ public class TimelineSupport extends ServerComponent {
 			
 				// If there is a requested extra forecast lag ...
 
-				if (tstatus.extra_forecast_lag >= 0L) {
+				if (tstatus.analyst_options.extra_forecast_lag >= 0L) {
 
 					// Use the smaller of the scheduled and extra lags
 
 					next_forecast_lag = Math.min (next_forecast_lag,
-						sg.task_disp.get_action_config().floor_unit_lag (tstatus.extra_forecast_lag, min_extra_lag));
+						sg.task_disp.get_action_config().floor_unit_lag (tstatus.analyst_options.extra_forecast_lag, min_extra_lag));
 				}
 			}
 		}
@@ -547,14 +550,17 @@ public class TimelineSupport extends ServerComponent {
 
 				if (next_forecast_lag >= 0L) {
 					pdl_time_ceiling = Math.min (pdl_time_ceiling,
-						tstatus.last_mainshock_time + next_forecast_lag - sg.task_disp.get_action_config().get_forecast_min_gap());
+						tstatus.forecast_mainshock.mainshock_time + next_forecast_lag - sg.task_disp.get_action_config().get_forecast_min_gap());
 				}
 
 				// If there is a previous forecast (should always be), limit to a maximum time after it
+				// Note: Originally the "else" did not appear on the following line.  With "else" the
+				// staleness test is applied only after the last forecast.  Wihtout "else" the staleness
+				// test is applied to every forecast.
 
-				if (tstatus.last_forecast_lag >= 0L) {
+				else if (tstatus.last_forecast_lag >= 0L) {
 					pdl_time_ceiling = Math.min (pdl_time_ceiling,
-						tstatus.last_mainshock_time + tstatus.last_forecast_lag + sg.task_disp.get_action_config().get_forecast_max_delay());
+						tstatus.forecast_mainshock.mainshock_time + tstatus.last_forecast_lag + sg.task_disp.get_action_config().get_forecast_max_delay());
 				}
 
 				// Kill the PDL retry if it would not occur before the time ceiling
@@ -628,7 +634,7 @@ public class TimelineSupport extends ServerComponent {
 
 			PendingTask.submit_task (
 				tstatus.event_id,												// event id
-				tstatus.last_mainshock_time + next_forecast_lag 
+				tstatus.forecast_mainshock.mainshock_time + next_forecast_lag 
 				+ sg.task_disp.get_action_config().get_comcat_clock_skew()
 				+ sg.task_disp.get_action_config().get_comcat_origin_skew(),	// sched_time
 				sg.task_disp.get_time(),										// submit_time
@@ -723,10 +729,10 @@ public class TimelineSupport extends ServerComponent {
 
 		// Get mainshock parameters for an event ID
 
-		ForecastParameters fparam = new ForecastParameters();
+		ForecastMainshock fcmain = new ForecastMainshock();
 
 		try {
-			sg.alias_sup.get_mainshock_for_event_id_ex (task.get_event_id(), fparam);
+			sg.alias_sup.get_mainshock_for_event_id_ex (task.get_event_id(), fcmain);
 		}
 
 		// Handle Comcat exception, which includes event ID not found
@@ -739,7 +745,7 @@ public class TimelineSupport extends ServerComponent {
 
 		sg.task_disp.set_taskres_stage (sg.task_sup.get_prompt_exec_time(),		// could use EXEC_TIME_MIN_WAITING
 										task.get_stage(),
-										fparam.timeline_id);
+										fcmain.timeline_id);
 		return RESCODE_STAGE;
 	}
 

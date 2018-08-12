@@ -74,13 +74,8 @@ public class ExAnalystIntervene extends ServerExecTask {
 
 				// If the command contains analyst data, save it
 
-				if (payload.f_has_analyst) {
-					tstatus.set_analyst_data  (
-						payload.analyst_id,
-						payload.analyst_remark,
-						payload.analyst_time,
-						payload.analyst_params,
-						payload.extra_forecast_lag);
+				if (payload.analyst_options != null) {
+					tstatus.set_analyst_data (payload.analyst_options);
 				}
 
 				// Write the new timeline entry
@@ -106,13 +101,35 @@ public class ExAnalystIntervene extends ServerExecTask {
 
 				// If the command contains analyst data, save it
 
-				if (payload.f_has_analyst) {
-					tstatus.set_analyst_data  (
-						payload.analyst_id,
-						payload.analyst_remark,
-						payload.analyst_time,
-						payload.analyst_params,
-						payload.extra_forecast_lag);
+				if (payload.analyst_options != null) {
+					tstatus.set_analyst_data (payload.analyst_options);
+				}
+
+				// Write the new timeline entry
+
+				sg.timeline_sup.append_timeline (task, tstatus);
+
+				// Log the task
+
+				return RESCODE_SUCCESS;
+			}
+
+			// If request to withdraw timeline ...
+
+			if (payload.state_change == OpAnalystIntervene.ASREQ_WITHDRAW && tstatus.can_analyst_withdraw()) {
+
+				// Analyst intervention
+
+				tstatus.set_state_analyst_intervention (sg.task_disp.get_time());
+
+				// Update the state
+			
+				tstatus.set_fc_status (TimelineStatus.FCSTAT_STOP_WITHDRAWN);
+
+				// If the command contains analyst data, save it
+
+				if (payload.analyst_options != null) {
+					tstatus.set_analyst_data (payload.analyst_options);
 				}
 
 				// Write the new timeline entry
@@ -126,7 +143,7 @@ public class ExAnalystIntervene extends ServerExecTask {
 
 			// If request to set analyst data with no change in state
 
-			if (payload.f_has_analyst && tstatus.can_analyst_update()) {
+			if (payload.analyst_options != null && tstatus.can_analyst_update()) {
 
 				// Analyst intervention
 			
@@ -134,12 +151,7 @@ public class ExAnalystIntervene extends ServerExecTask {
 
 				// Save analyst data
 
-				tstatus.set_analyst_data  (
-					payload.analyst_id,
-					payload.analyst_remark,
-					payload.analyst_time,
-					payload.analyst_params,
-					payload.extra_forecast_lag);
+				tstatus.set_analyst_data (payload.analyst_options);
 
 				// Write the new timeline entry
 
@@ -150,7 +162,7 @@ public class ExAnalystIntervene extends ServerExecTask {
 				return RESCODE_TIMELINE_ANALYST_SET;
 			}
 
-			if (payload.f_has_analyst) {
+			if (payload.analyst_options != null) {
 				return RESCODE_TIMELINE_ANALYST_FAIL;
 			}
 
@@ -173,10 +185,10 @@ public class ExAnalystIntervene extends ServerExecTask {
 
 		// Get mainshock parameters
 
-		ForecastParameters forecast_params = new ForecastParameters();
+		ForecastMainshock fcmain = new ForecastMainshock();
 
 		try {
-			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), forecast_params);
+			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), fcmain);
 		}
 
 		// An exception here triggers a ComCat retry
@@ -193,7 +205,7 @@ public class ExAnalystIntervene extends ServerExecTask {
 			sg.task_disp.get_time(),
 			sg.task_disp.get_action_config(),
 			task.get_event_id(),
-			forecast_params,
+			fcmain,
 			TimelineStatus.FCORIG_ANALYST,
 			TimelineStatus.FCSTAT_ACTIVE_NORMAL);
 
@@ -203,15 +215,16 @@ public class ExAnalystIntervene extends ServerExecTask {
 			tstatus.set_fc_status (TimelineStatus.FCSTAT_STOP_ANALYST);
 		}
 
+		// If request to withdraw timeline, create timeline in the withdrawn state
+
+		if (payload.state_change == OpAnalystIntervene.ASREQ_WITHDRAW) {
+			tstatus.set_fc_status (TimelineStatus.FCSTAT_STOP_WITHDRAWN);
+		}
+
 		// If the command contains analyst data, save it
 
-		if (payload.f_has_analyst) {
-			tstatus.set_analyst_data  (
-				payload.analyst_id,
-				payload.analyst_remark,
-				payload.analyst_time,
-				payload.analyst_params,
-				payload.extra_forecast_lag);
+		if (payload.analyst_options != null) {
+			tstatus.set_analyst_data (payload.analyst_options);
 		}
 
 		// Write the new timeline entry

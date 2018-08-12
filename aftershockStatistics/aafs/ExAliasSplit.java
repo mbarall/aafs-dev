@@ -72,10 +72,10 @@ public class ExAliasSplit extends ServerExecTask {
 
 		// Get mainshock parameters
 
-		ForecastParameters forecast_params = new ForecastParameters();
+		ForecastMainshock fcmain = new ForecastMainshock();
 
 		try {
-			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), forecast_params);
+			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), fcmain);
 		}
 
 		// An exception here triggers a ComCat retry
@@ -89,7 +89,7 @@ public class ExAliasSplit extends ServerExecTask {
 		// Search intake regions, using the minimum magnitude criterion
 
 		IntakeSphRegion intake_region = sg.task_disp.get_action_config().get_pdl_intake_region_for_min_mag (
-			forecast_params.mainshock_lat, forecast_params.mainshock_lon, forecast_params.mainshock_mag);
+			fcmain.mainshock_lat, fcmain.mainshock_lon, fcmain.mainshock_mag);
 
 		if (intake_region == null) {
 			return RESCODE_INTAKE_FILTERED;		// Log task as not passing intake filter
@@ -103,7 +103,7 @@ public class ExAliasSplit extends ServerExecTask {
 			sg.task_disp.get_time(),
 			sg.task_disp.get_action_config(),
 			task.get_event_id(),
-			forecast_params,
+			fcmain,
 			TimelineStatus.FCORIG_SPLIT,
 			TimelineStatus.FCSTAT_ACTIVE_INTAKE);
 

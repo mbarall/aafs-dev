@@ -8,19 +8,17 @@ import scratch.aftershockStatistics.aafs.entity.PendingTask;
 import scratch.aftershockStatistics.aafs.entity.LogEntry;
 import scratch.aftershockStatistics.aafs.entity.CatalogSnapshot;
 import scratch.aftershockStatistics.aafs.entity.TimelineEntry;
+import scratch.aftershockStatistics.aafs.entity.AliasFamily;
 
 
 /**
- * Operation payload for intake of an event as a sync event.
- * Author: Michael Barall 05/20/2018.
+ * Operation payload to stop Comcat polling.
+ * Author: Michael Barall 08/05/2018.
  */
-public class OpIntakeSync extends DBPayload {
+public class OpPollComcatStop extends DBPayload {
 
 	//----- Constants and variables -----
 
-	// Parameters supplied by the analyst, or null if none.
-
-	public AnalystOptions analyst_options;
 
 
 
@@ -30,32 +28,13 @@ public class OpIntakeSync extends DBPayload {
 	/**
 	 * Default constructor does nothing.
 	 */
-	public OpIntakeSync () {}
+	public OpPollComcatStop () {}
 
 
-	// Set up the contents, for no analyst data.
+	// Set up the contents.
 
 	public void setup () {
-		analyst_options = null;
 		return;
-	}
-
-
-	// Set up the contents, with analyst data
-
-	public void setup (AnalystOptions the_analyst_options) {
-		analyst_options = the_analyst_options;
-		return;
-	}
-
-
-	// Return the effective analyst parameters, or null if none.
-
-	public ForecastParameters get_eff_analyst_params () {
-		if (analyst_options != null) {
-			return analyst_options.analyst_params;
-		}
-		return null;
 	}
 
 
@@ -65,9 +44,9 @@ public class OpIntakeSync extends DBPayload {
 
 	// Marshal version number.
 
-	private static final int MARSHAL_VER_1 = 31001;
+	private static final int MARSHAL_VER_1 = 44001;
 
-	private static final String M_VERSION_NAME = "OpIntakeSync";
+	private static final String M_VERSION_NAME = "OpPollComcatStop";
 
 	// Marshal object, internal.
 
@@ -84,7 +63,6 @@ public class OpIntakeSync extends DBPayload {
 
 		// Contents
 
-		AnalystOptions.marshal_poly     (writer, "analyst_options"    , analyst_options    );
 
 		return;
 	}
@@ -104,7 +82,6 @@ public class OpIntakeSync extends DBPayload {
 
 		// Contents
 
-		analyst_options     = AnalystOptions.unmarshal_poly     (reader, "analyst_options"    );
 
 		return;
 	}
@@ -122,7 +99,7 @@ public class OpIntakeSync extends DBPayload {
 	// Unmarshal object.
 
 	@Override
-	public OpIntakeSync unmarshal (MarshalReader reader, String name) {
+	public OpPollComcatStop unmarshal (MarshalReader reader, String name) {
 		reader.unmarshalMapBegin (name);
 		do_umarshal (reader);
 		reader.unmarshalMapEnd ();
@@ -132,7 +109,7 @@ public class OpIntakeSync extends DBPayload {
 	// Unmarshal object, for a pending task.
 
 	@Override
-	public OpIntakeSync unmarshal_task (PendingTask ptask) {
+	public OpPollComcatStop unmarshal_task (PendingTask ptask) {
 		try {
 			unmarshal (ptask.get_details(), null);
 		} catch (Exception e) {

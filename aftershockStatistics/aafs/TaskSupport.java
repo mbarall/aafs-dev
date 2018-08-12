@@ -71,6 +71,32 @@ public class TaskSupport extends ServerComponent {
 
 
 
+	// Delete all tasks with the given event id and any of the given opcodes.
+	// Note: The currently active task is deleted, if it matches.
+
+	public void delete_all_tasks_for_event (String event_id, int... opcodes) {
+
+		// Get a list of all waiting tasks for the given event
+
+		List<PendingTask> tasks = PendingTask.get_task_entry_range (0L, 0L, event_id);
+
+		// Delete tasks with the given opcode
+
+		for (PendingTask task : tasks) {
+			for (int opcode : opcodes) {
+				if (task.get_opcode() == opcode) {
+					PendingTask.delete_task (task);
+					break;
+				}
+			}
+		}
+	
+		return;
+	}
+
+
+
+
 	// Get the next prompt execution time to use.
 	// Note: This is intended for tasks that execute reasonably quickly, without
 	// contacting external services such as ComCat.  These tasks have priority over

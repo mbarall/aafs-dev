@@ -30,7 +30,11 @@ public class ServerComponent {
 	public static final int OPCODE_ALIAS_SPLIT = 11;		// Notification of alias timeline split
 	public static final int OPCODE_ALIAS_STOP = 12;			// Notification of alias timeline stop
 	public static final int OPCODE_ALIAS_REVIVE = 13;		// Notification of alias timeline revive
-	public static final int OPCODE_MAX = 13;				// Maximum allowed opcode
+	public static final int OPCODE_INTAKE_POLL = 14;		// Intake an event, from poll
+	public static final int OPCODE_POLL_COMCAT_RUN = 15;	// Run a poll of Comcat to discover events
+	public static final int OPCODE_POLL_COMCAT_START = 16;	// Start polling Comcat to discover events
+	public static final int OPCODE_POLL_COMCAT_STOP = 17;	// Stop polling Comcat to discover events
+	public static final int OPCODE_MAX = 17;				// Maximum allowed opcode
 
 	// Return a string describing an opcode.
 
@@ -49,6 +53,10 @@ public class ServerComponent {
 		case OPCODE_ALIAS_SPLIT: return "OPCODE_ALIAS_SPLIT";
 		case OPCODE_ALIAS_STOP: return "OPCODE_ALIAS_STOP";
 		case OPCODE_ALIAS_REVIVE: return "OPCODE_ALIAS_REVIVE";
+		case OPCODE_INTAKE_POLL: return "OPCODE_INTAKE_POLL";
+		case OPCODE_POLL_COMCAT_RUN: return "OPCODE_POLL_COMCAT_RUN";
+		case OPCODE_POLL_COMCAT_START: return "OPCODE_POLL_COMCAT_START";
+		case OPCODE_POLL_COMCAT_STOP: return "OPCODE_POLL_COMCAT_STOP";
 		}
 		return "OPCODE_INVALID(" + x + ")";
 	}
@@ -94,12 +102,17 @@ public class ServerComponent {
 	public static final int RESCODE_ALIAS_NEW_EVENT = 21;		// Event ID does not appear in the alias table, can be a new timeline
 	public static final int RESCODE_ALIAS_NOT_IN_COMCAT = 22;	// Event ID is not known to Comcat, cannot query the alias table
 	public static final int RESCODE_INTAKE_FILTERED = 23;		// Event intake dropped because event did not pass intake filter
-	public static final int RESCODE_MAX = 23;					// Maximum known result code
+	public static final int RESCODE_FCAST_STALE = 24;			// Forecast skipped because it would be stale
+	public static final int RESCODE_FCAST_INTAKE_FILTERED = 25;	// Forecast skipped because event did not pass intake filter
+	public static final int RESCODE_FCAST_ANALYST_BLOCKED = 26;	// Forecast skipped because analyst blocked it
+	public static final int RESCODE_FCAST_SHADOWED = 27;		// Forecast skipped because the event is shadowed
+	public static final int RESCODE_FCAST_FORESHOCK = 28;		// Forecast skipped because event was found to be a foreshock
+	public static final int RESCODE_MAX = 28;					// Maximum known result code
 
 	public static final int RESCODE_DELETE = -1;				// Special result code: delete current task (without logging it)
 	public static final int RESCODE_STAGE = -2;					// Special result code: stage current task (execute it again)
 
-	// Return a string describing an result code.
+	// Return a string describing a result code.
 
 	public String get_rescode_as_string (int x) {
 		switch (x) {
@@ -126,6 +139,11 @@ public class ServerComponent {
 		case RESCODE_ALIAS_NEW_EVENT: return "RESCODE_ALIAS_NEW_EVENT";
 		case RESCODE_ALIAS_NOT_IN_COMCAT: return "RESCODE_ALIAS_NOT_IN_COMCAT";
 		case RESCODE_INTAKE_FILTERED: return "RESCODE_INTAKE_FILTERED";
+		case RESCODE_FCAST_STALE: return "RESCODE_FCAST_STALE";
+		case RESCODE_FCAST_INTAKE_FILTERED: return "RESCODE_FCAST_INTAKE_FILTERED";
+		case RESCODE_FCAST_ANALYST_BLOCKED: return "RESCODE_FCAST_ANALYST_BLOCKED";
+		case RESCODE_FCAST_SHADOWED: return "RESCODE_FCAST_SHADOWED";
+		case RESCODE_FCAST_FORESHOCK: return "RESCODE_FCAST_FORESHOCK";
 
 		case RESCODE_DELETE: return "RESCODE_DELETE";
 		case RESCODE_STAGE: return "RESCODE_STAGE";
@@ -136,7 +154,7 @@ public class ServerComponent {
 
 
 
-	// Special event ids
+	// Special event ids.
 
 	public static final String EVID_SHUTDOWN = "===shutdown===";	// Shutdown task
 
@@ -144,12 +162,25 @@ public class ServerComponent {
 
 	public static final String EVID_ERROR = "===error===";	// Error status
 
+	public static final String EVID_ANALYST = "===analyst===";	// Used for analyst-selected shadowing
+
+	public static final String EVID_POLL = "===poll===";	// Used for polling tasks
 
 
 
-	// Special submit ids
+
+	// Special submit ids.
 
 	public static final String SUBID_AAFS = "AAFS";		// Automatic system
+
+
+
+
+	// Special durations, in milliseconds.
+
+	public static final long DURATION_DAY = 86400000L;				// 1 day
+	public static final long DURATION_YEAR = 31536000000L;			// 1 year (365 days)
+	public static final long DURATION_HUGE = 1000000000000000L;		// 10^15 ~ 30,000 years
 
 
 

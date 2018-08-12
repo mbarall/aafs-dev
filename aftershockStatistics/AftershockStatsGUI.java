@@ -295,9 +295,9 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 		maxLatParam = new DoubleParameter("Max Lat", -90d, 90d, new Double(36d));
 		minLonParam = new DoubleParameter("Min Lon", -180d, 180d, new Double(32d));
 		maxLonParam = new DoubleParameter("Max Lon", -180d, 180d, new Double(36d));
-		minDepthParam = new DoubleParameter("Min Depth", 0d, 700d, new Double(0));
+		minDepthParam = new DoubleParameter("Min Depth", ComcatAccessor.DEFAULT_MIN_DEPTH, ComcatAccessor.DEFAULT_MAX_DEPTH, new Double(ComcatAccessor.DEFAULT_MIN_DEPTH));
 		minDepthParam.setUnits("km");
-		maxDepthParam = new DoubleParameter("Max Depth", 0d, 700d, new Double(700d));
+		maxDepthParam = new DoubleParameter("Max Depth", ComcatAccessor.DEFAULT_MIN_DEPTH, ComcatAccessor.DEFAULT_MAX_DEPTH, new Double(ComcatAccessor.DEFAULT_MAX_DEPTH));
 		maxDepthParam.setUnits("km");
 		regionCenterTypeParam = new EnumParameter<AftershockStatsGUI.RegionCenterType>(
 				"Region Center", EnumSet.allOf(RegionCenterType.class), RegionCenterType.CENTROID, null);

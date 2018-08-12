@@ -397,6 +397,10 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 							PendingTask.delete_task (shutdown_task);
 						}
 					}
+
+					// Initialize Comcat polling, begin disabled
+
+					sg.poll_sup.init_polling_disabled();
 				}
 
 				// Polling loop, continue until shutdown or exception
@@ -513,13 +517,14 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 	/**
 	 * run_next_task - Run the next task.
 	 * @param f_verbose = True to display the task to System.out.
+	 * @param f_adjust_time = True to adjust time to the apparent exeuction time of the task.
 	 * @return
 	 * Returns true if task is executed, false if task queue is empty.
 	 * This function connects to MongoDB, executes the next task on the queue, and then
 	 * disconnects from MongoDB.
 	 * This function also sets the clock to the task execution time.
 	 */
-	public boolean run_next_task (boolean f_verbose) {
+	public boolean run_next_task (boolean f_verbose, boolean f_adjust_time) {
 
 		boolean result = true;
 
@@ -565,7 +570,9 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 				// Adjust the time
 
-				ServerClock.advance_frozen_time (task.get_apparent_time());
+				if (f_adjust_time) {
+					ServerClock.advance_frozen_time (task.get_apparent_time());
+				}
 				dispatcher_time = ServerClock.get_time();
 
 				// If verbose, write message
