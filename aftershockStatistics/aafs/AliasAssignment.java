@@ -538,6 +538,39 @@ public class AliasAssignment {
 	}
 
 
+	// Make a string representation on a single line.
+
+	public String one_line_string () {
+
+		// Number of Comcat and removed IDs
+
+		int cc_count = get_comcat_id_count();
+		int rm_count = get_removed_id_count();
+
+		int total_count = cc_count + rm_count;
+
+		// An array large enough for both
+
+		String[] all_ids = new String[total_count];
+
+		// Fill with IDs, first the Comcat and then the removed IDs
+
+		get_comcat_ids_as_array (all_ids, 0);
+		get_removed_ids_as_array (all_ids, cc_count);
+
+		// Prefix each removed ID with a minus sign
+
+		for (int i = cc_count; i < total_count; ++i) {
+			all_ids[i] = "-" + all_ids[i];
+		}
+
+		// Construct the string
+
+		return ((timeline_id == null) ? ("null") : (timeline_id))
+				+ " = " + Arrays.toString (all_ids);
+	}
+
+
 	//----- Matching -----
 
 

@@ -2,12 +2,15 @@ package scratch.aftershockStatistics.aafs;
 
 import java.util.List;
 
+import java.io.Closeable;
+
 import scratch.aftershockStatistics.aafs.MongoDBUtil;
 
 import scratch.aftershockStatistics.aafs.entity.PendingTask;
 import scratch.aftershockStatistics.aafs.entity.LogEntry;
 import scratch.aftershockStatistics.aafs.entity.CatalogSnapshot;
 import scratch.aftershockStatistics.aafs.entity.TimelineEntry;
+import scratch.aftershockStatistics.aafs.entity.AliasFamily;
 
 import scratch.aftershockStatistics.AftershockStatsCalc;
 import scratch.aftershockStatistics.CompactEqkRupList;
@@ -19,6 +22,8 @@ import org.opensha.sha.earthquake.observedEarthquake.ObsEqkRupture;
 import scratch.aftershockStatistics.util.MarshalReader;
 import scratch.aftershockStatistics.util.MarshalWriter;
 import scratch.aftershockStatistics.util.SimpleUtils;
+import scratch.aftershockStatistics.util.TimeSplitOutputStream;
+import scratch.aftershockStatistics.util.ConsoleRedirector;
 
 
 /**
@@ -41,25 +46,77 @@ public class ServerCmd {
 			return;
 		}
 
-		// Say hello
+		// Get current time
+
+		long start_time = ServerClock.get_true_time();
+
+		try (
+
+			// Console redirection and log
+
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop (
+										(new ServerConfig()).get_log_con_aafs(), start_time);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
+
+			// Summary log
+
+			TimeSplitOutputStream sum_tsop = TimeSplitOutputStream.make_tsop (
+										(new ServerConfig()).get_log_summary(), start_time);
+
+		){
+
+			try {
+
+				// Say hello
 			
-		System.out.println ("AAFS server is starting.");
+				System.out.println (ServerComponent.LOG_SEPARATOR_LINE);
+				System.out.println (VersionInfo.get_title());
+				System.out.println ("");
+				System.out.println ("AAFS server is starting at " + SimpleUtils.time_to_string (start_time));
 
-		// Get a task dispatcher
+				// Get a task dispatcher
 
-		TaskDispatcher dispatcher = new TaskDispatcher();
+				TaskDispatcher dispatcher = new TaskDispatcher();
 
-		// Run it
+				// Install the log files
 
-		dispatcher.run();
+				dispatcher.set_console_log_tsop (con_tsop);
+				dispatcher.set_summary_log_tsop (sum_tsop);
 
-		// Display final status
+				// Run it
 
-		int dispatcher_state = dispatcher.get_dispatcher_state();
-		if (dispatcher_state == TaskDispatcher.STATE_SHUTDOWN) {
-			System.out.println ("AAFS server exited normally.");
-		} else {
-			System.out.println ("Server exited abnormally, final state code = " + dispatcher_state);
+				dispatcher.run();
+
+				// Display final status
+
+				System.out.println (ServerComponent.LOG_SEPARATOR_LINE);
+
+				int dispatcher_state = dispatcher.get_dispatcher_state();
+				if (dispatcher_state == TaskDispatcher.STATE_SHUTDOWN) {
+					System.out.println ("AAFS server exited normally at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				} else {
+					System.out.println ("Server exited abnormally at " + SimpleUtils.time_to_string (ServerClock.get_true_time()) + ", final state code = " + dispatcher_state);
+				}
+
+			}
+
+			// Report any uncaught exceptions
+
+			catch (Exception e) {
+				System.out.println ("AAFS server had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				e.printStackTrace();
+			}
+		}
+
+		// Report any uncaught exceptions
+
+		catch (Exception e) {
+			System.out.println ("AAFS server had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+            e.printStackTrace();
 		}
 
 		return;
@@ -79,21 +136,59 @@ public class ServerCmd {
 			return;
 		}
 
-		// Say hello
+		// Get current time
+
+		long start_time = ServerClock.get_true_time();
+
+		try (
+
+			// Console redirection and log
+
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop (
+										(new ServerConfig()).get_log_con_control(), start_time);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
+
+		){
+
+			try {
+
+				// Say hello
 			
-		System.out.println ("Sending shutdown command to AAFS server.");
+				System.out.println (ServerComponent.LOG_SEPARATOR_LINE);
+				System.out.println ("Sending shutdown command to AAFS server at " + SimpleUtils.time_to_string (start_time));
 
-		// Post the shutdown task
+				// Post the shutdown task
 
-		boolean result = TaskDispatcher.post_shutdown ("ServerCmd");
+				boolean result = TaskDispatcher.post_shutdown ("ServerCmd");
 
-		// Display result
+				// Display result
 
-		if (result) {
-			System.out.println ("Shutdown command was sent to AAFS server.");
-			System.out.println ("It takes about 30 seconds for the shutdown to be complete.");
-		} else {
-			System.out.println ("Unable to send shutdown command to AAFS server.");
+				if (result) {
+					System.out.println ("Shutdown command was sent to AAFS server at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+					System.out.println ("It takes about 30 seconds for the shutdown to be complete.");
+				} else {
+					System.out.println ("Unable to send shutdown command to AAFS server at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				}
+
+			}
+
+			// Report any uncaught exceptions
+
+			catch (Exception e) {
+				System.out.println ("Shutdown command had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				e.printStackTrace();
+			}
+		}
+
+		// Report any uncaught exceptions
+
+		catch (Exception e) {
+			System.out.println ("Shutdown command had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+            e.printStackTrace();
 		}
 
 		return;
@@ -115,81 +210,140 @@ public class ServerCmd {
 
 		OpIntakePDL payload = new OpIntakePDL();
 
-		payload.setup (args, 1, args.length);
+		try {
+			payload.setup (args, 1, args.length);
+		}
 
-		// If no event id, just drop it
+		// If PDL arguments do not parse, just drop it silently
+		
+		catch (Exception e) {
+			return;
+		}
+
+		// If no event id, just drop it silently
 
 		if (!( payload.has_event_id() )) {
 			return;
 		}
 
-		// Say hello
+		// Get current time
 
-		System.out.println ("PDL intake at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
-		System.out.println ("event_id = " + payload.event_id);
+		long start_time = ServerClock.get_true_time();
 
-		// If we don't have location, magnitude, and time, drop it
+		try (
 
-		if (!( payload.has_lat_lon_depth_mag() && payload.has_event_time() )) {
-			System.out.println ("Dropping event because PDL did not supply location, magnitude, and time");
-			return;
-		}
+			// Console redirection and log
 
-		// Show event info
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop (
+										(new ServerConfig()).get_log_con_intake(), start_time);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
 
-		System.out.println ("event_time = " + SimpleUtils.time_to_string (payload.mainshock_time));
-		System.out.println ("event_mag = " + payload.mainshock_mag);
-		System.out.println ("event_lat = " + payload.mainshock_lat);
-		System.out.println ("event_lon = " + payload.mainshock_lon);
-		System.out.println ("event_depth = " + payload.mainshock_depth);
+		){
 
-		// Test if event passes the intake filter, using the minimum magnitude criterion
+			try {
 
-		ActionConfig action_config = new ActionConfig();
+				// Get the timestamp
 
-		long the_time = ServerClock.get_time();
+				String timestamp = SimpleUtils.time_to_string_no_z (start_time);
 
-		long sched_time = the_time;
+				// If we don't have location, magnitude, and time, drop it
 
-		IntakeSphRegion intake_region = action_config.get_pdl_intake_region_for_min_mag (
-				payload.mainshock_lat, payload.mainshock_lon, payload.mainshock_mag);
+				if (!( payload.has_lat_lon_depth_mag() && payload.has_event_time() )) {
+					System.out.println (timestamp + " DROP " + payload.event_id + " (incomplete data)");
+					return;
+				}
 
-		if (intake_region == null) {
+				// Build event info
 
-			// Didn't pass, check using the intake magnitude criterion
+				String event_info = SimpleUtils.event_id_and_info_one_line (
+										payload.event_id,
+										payload.mainshock_time,
+										payload.mainshock_mag,
+										payload.mainshock_lat,
+										payload.mainshock_lon,
+										payload.mainshock_depth);
 
-			intake_region = action_config.get_pdl_intake_region_for_intake_mag (
-					payload.mainshock_lat, payload.mainshock_lon, payload.mainshock_mag);
+				// Test if event passes the intake filter, using the minimum magnitude criterion
 
-			// Schedule task for projected time of first forecast, ignoring origin skew
+				ActionConfig action_config = new ActionConfig();
 
-			sched_time = payload.mainshock_time
-							+ action_config.get_next_forecast_lag(0L)
-							+ action_config.get_comcat_clock_skew();
+				long the_time = ServerClock.get_time();
 
-			// If we didn't pass, or if the scheduled time has already passed, then drop event
+				long sched_time = the_time;
 
-			if (intake_region == null || sched_time < the_time) {
-				System.out.println ("Dropping event because it did not pass the intake filter");
-				return;
+				IntakeSphRegion intake_region = action_config.get_pdl_intake_region_for_min_mag (
+						payload.mainshock_lat, payload.mainshock_lon, payload.mainshock_mag);
+
+				if (intake_region == null) {
+
+					// Didn't pass, check using the intake magnitude criterion
+
+					intake_region = action_config.get_pdl_intake_region_for_intake_mag (
+							payload.mainshock_lat, payload.mainshock_lon, payload.mainshock_mag);
+
+					// Schedule task for projected time of first forecast, ignoring origin skew
+
+					sched_time = payload.mainshock_time
+									+ action_config.get_next_forecast_lag(0L)
+									+ action_config.get_comcat_clock_skew();
+
+					// If we didn't pass, or if the scheduled time has already passed, then drop event
+
+					if (intake_region == null || sched_time < the_time) {
+						System.out.println (timestamp + " INTAKE-FILTER " + event_info);
+						return;
+					}
+				}
+
+				// Test if event is in acceptable age range
+
+				long the_min_time = start_time - action_config.get_pdl_intake_max_age();
+				long the_max_time = start_time + action_config.get_pdl_intake_max_future();
+
+				if (!( payload.mainshock_time >= the_min_time && payload.mainshock_time <= the_max_time )) {
+				
+					// Out of acceptable age range, drop event
+
+					System.out.println (timestamp + " AGE-RANGE " + event_info);
+					return;
+				}
+
+				// Post the task
+
+				String event_id = payload.event_id;
+
+				int opcode = TaskDispatcher.OPCODE_INTAKE_PDL;
+				int stage = 0;
+
+				boolean result = TaskDispatcher.post_task (event_id, sched_time, the_time, "ServerCmd", opcode, stage, payload.marshal_task());
+
+				// Display result
+
+				if (result) {
+					System.out.println (timestamp + " ACCEPT " + event_info);
+				} else {
+					System.out.println (timestamp + " SUBMISSION-FAILURE " + event_info);
+				}
+
+			}
+
+			// Report any uncaught exceptions
+
+			catch (Exception e) {
+				System.out.println ("PDL intake had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				e.printStackTrace();
 			}
 		}
 
-		// Post the task
+		// Report any uncaught exceptions
 
-		String event_id = payload.event_id;
-
-		int opcode = TaskDispatcher.OPCODE_INTAKE_PDL;
-		int stage = 0;
-
-		boolean result = TaskDispatcher.post_task (event_id, sched_time, the_time, "ServerCmd", opcode, stage, payload.marshal_task());
-
-		// Display result
-
-		if (result) {
-			System.out.println ("Event was sent to AAFS server.");
-		} else {
-			System.out.println ("Unable to send event to AAFS server.");
+		catch (Exception e) {
+			System.out.println ("PDL intake had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+            e.printStackTrace();
 		}
 
 		return;
@@ -241,14 +395,14 @@ public class ServerCmd {
 
 
 
-	// cmd_start_pdl - Run the server, and accept PDL options on the command line.
+	// cmd_start_with_pdl - Run the server, and accept PDL options on the command line.
 
-	public static void cmd_start_pdl(String[] args) {
+	public static void cmd_start_with_pdl(String[] args) {
 
 		// Any number of additional arguments
 
 		if (args.length < 1) {
-			System.err.println ("ServerCmd : Invalid 'start_pdl' subcommand");
+			System.err.println ("ServerCmd : Invalid 'start_with_pdl' subcommand");
 			return;
 		}
 
@@ -264,25 +418,77 @@ public class ServerCmd {
 			return;
 		}
 
-		// Say hello
+		// Get current time
+
+		long start_time = ServerClock.get_true_time();
+
+		try (
+
+			// Console redirection and log
+
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop (
+										(new ServerConfig()).get_log_con_aafs(), start_time);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
+
+			// Summary log
+
+			TimeSplitOutputStream sum_tsop = TimeSplitOutputStream.make_tsop (
+										(new ServerConfig()).get_log_summary(), start_time);
+
+		){
+
+			try {
+
+				// Say hello
 			
-		System.out.println ("AAFS server is starting.");
+				System.out.println (ServerComponent.LOG_SEPARATOR_LINE);
+				System.out.println (VersionInfo.get_title());
+				System.out.println ("");
+				System.out.println ("AAFS server is starting at " + SimpleUtils.time_to_string (start_time));
 
-		// Get a task dispatcher
+				// Get a task dispatcher
 
-		TaskDispatcher dispatcher = new TaskDispatcher();
+				TaskDispatcher dispatcher = new TaskDispatcher();
 
-		// Run it
+				// Install the log files
 
-		dispatcher.run();
+				dispatcher.set_console_log_tsop (con_tsop);
+				dispatcher.set_summary_log_tsop (sum_tsop);
 
-		// Display final status
+				// Run it
 
-		int dispatcher_state = dispatcher.get_dispatcher_state();
-		if (dispatcher_state == TaskDispatcher.STATE_SHUTDOWN) {
-			System.out.println ("AAFS server exited normally.");
-		} else {
-			System.out.println ("Server exited abnormally, final state code = " + dispatcher_state);
+				dispatcher.run();
+
+				// Display final status
+
+				System.out.println (ServerComponent.LOG_SEPARATOR_LINE);
+
+				int dispatcher_state = dispatcher.get_dispatcher_state();
+				if (dispatcher_state == TaskDispatcher.STATE_SHUTDOWN) {
+					System.out.println ("AAFS server exited normally at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				} else {
+					System.out.println ("Server exited abnormally at " + SimpleUtils.time_to_string (ServerClock.get_true_time()) + ", final state code = " + dispatcher_state);
+				}
+
+			}
+
+			// Report any uncaught exceptions
+
+			catch (Exception e) {
+				System.out.println ("AAFS server had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				e.printStackTrace();
+			}
+		}
+
+		// Report any uncaught exceptions
+
+		catch (Exception e) {
+			System.out.println ("AAFS server had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+            e.printStackTrace();
 		}
 
 		return;
@@ -298,35 +504,73 @@ public class ServerCmd {
 		// No additional arguments
 
 		if (args.length != 1) {
-			System.err.println ("ServerCmd : Invalid 'cmd_start_comcat_poll' subcommand");
+			System.err.println ("ServerCmd : Invalid 'start_comcat_poll' subcommand");
 			return;
 		}
 
-		String event_id = ServerComponent.EVID_POLL;
+		// Get current time
 
-		OpPollComcatStart payload = new OpPollComcatStart();
-		payload.setup ();
+		long start_time = ServerClock.get_true_time();
 
-		// Say hello
+		try (
 
-		System.out.println ("Sending command to start polling Comcat");
+			// Console redirection and log
 
-		// Post the task
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop (
+										(new ServerConfig()).get_log_con_control(), start_time);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
 
-		int opcode = TaskDispatcher.OPCODE_POLL_COMCAT_START;
-		int stage = 0;
+		){
 
-		long the_time = ServerClock.get_time();
+			try {
 
-		boolean result = TaskDispatcher.post_task (event_id, the_time, the_time, "ServerCmd", opcode, stage, payload.marshal_task());
+				String event_id = ServerComponent.EVID_POLL;
 
-		// Display result
+				OpPollComcatStart payload = new OpPollComcatStart();
+				payload.setup ();
 
-		if (result) {
-			System.out.println ("Command to start polling Comcat was sent to AAFS server.");
-			System.out.println ("It takes about 30 seconds for the command to take effect.");
-		} else {
-			System.out.println ("Unable to send AAFS server command to start polling Comcat.");
+				// Say hello
+
+				System.out.println (ServerComponent.LOG_SEPARATOR_LINE);
+				System.out.println ("Sending command to start polling Comcat at " + SimpleUtils.time_to_string (start_time));
+
+				// Post the task
+
+				int opcode = TaskDispatcher.OPCODE_POLL_COMCAT_START;
+				int stage = 0;
+
+				long the_time = ServerClock.get_time();
+
+				boolean result = TaskDispatcher.post_task (event_id, the_time, the_time, "ServerCmd", opcode, stage, payload.marshal_task());
+
+				// Display result
+
+				if (result) {
+					System.out.println ("Command to start polling Comcat was sent to AAFS server at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+					System.out.println ("It takes about 30 seconds for the command to take effect.");
+				} else {
+					System.out.println ("Unable to send AAFS server command to start polling Comcat at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				}
+
+			}
+
+			// Report any uncaught exceptions
+
+			catch (Exception e) {
+				System.out.println ("Command to start polling had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				e.printStackTrace();
+			}
+		}
+
+		// Report any uncaught exceptions
+
+		catch (Exception e) {
+			System.out.println ("Command to start polling had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+            e.printStackTrace();
 		}
 
 		return;
@@ -342,36 +586,95 @@ public class ServerCmd {
 		// No additional arguments
 
 		if (args.length != 1) {
-			System.err.println ("ServerCmd : Invalid 'cmd_stop_comcat_poll' subcommand");
+			System.err.println ("ServerCmd : Invalid 'stop_comcat_poll' subcommand");
 			return;
 		}
 
-		String event_id = ServerComponent.EVID_POLL;
+		// Get current time
 
-		OpPollComcatStop payload = new OpPollComcatStop();
-		payload.setup ();
+		long start_time = ServerClock.get_true_time();
+
+		try (
+
+			// Console redirection and log
+
+			TimeSplitOutputStream con_tsop = TimeSplitOutputStream.make_tsop (
+										(new ServerConfig()).get_log_con_control(), start_time);
+			ConsoleRedirector con_red = ConsoleRedirector.make_redirector (con_tsop, false, false);
+			Closeable auto_out = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_out (con_red));
+			Closeable auto_err = TimeSplitOutputStream.add_auto_upstream (con_tsop,
+										ConsoleRedirector.get_new_err (con_red));
+
+		){
+
+			try {
+
+				String event_id = ServerComponent.EVID_POLL;
+
+				OpPollComcatStop payload = new OpPollComcatStop();
+				payload.setup ();
+
+				// Say hello
+
+				System.out.println (ServerComponent.LOG_SEPARATOR_LINE);
+				System.out.println ("Sending command to stop polling Comcat at " + SimpleUtils.time_to_string (start_time));
+
+				// Post the task
+
+				int opcode = TaskDispatcher.OPCODE_POLL_COMCAT_STOP;
+				int stage = 0;
+
+				long the_time = ServerClock.get_time();
+
+				boolean result = TaskDispatcher.post_task (event_id, the_time, the_time, "ServerCmd", opcode, stage, payload.marshal_task());
+
+				// Display result
+
+				if (result) {
+					System.out.println ("Command to stop polling Comcat was sent to AAFS server at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+					System.out.println ("It takes about 30 seconds for the command to take effect.");
+				} else {
+					System.out.println ("Unable to send AAFS server command to stop polling Comcat at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				}
+
+			}
+
+			// Report any uncaught exceptions
+
+			catch (Exception e) {
+				System.out.println ("Command to stop polling had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+				e.printStackTrace();
+			}
+		}
+
+		// Report any uncaught exceptions
+
+		catch (Exception e) {
+			System.out.println ("Command to stop polling had an uncaught exception at " + SimpleUtils.time_to_string (ServerClock.get_true_time()));
+            e.printStackTrace();
+		}
+
+		return;
+	}
+
+
+
+
+	// cmd_show_version - Print version info to the standard output.
+
+	public static void cmd_show_version(String[] args) {
+
+		// No additional arguments
+
+		if (args.length != 1) {
+			System.err.println ("ServerCmd : Invalid 'show_version' subcommand");
+			return;
+		}
 
 		// Say hello
 
-		System.out.println ("Sending command to stop polling Comcat");
-
-		// Post the task
-
-		int opcode = TaskDispatcher.OPCODE_POLL_COMCAT_STOP;
-		int stage = 0;
-
-		long the_time = ServerClock.get_time();
-
-		boolean result = TaskDispatcher.post_task (event_id, the_time, the_time, "ServerCmd", opcode, stage, payload.marshal_task());
-
-		// Display result
-
-		if (result) {
-			System.out.println ("Command to stop polling Comcat was sent to AAFS server.");
-			System.out.println ("It takes about 30 seconds for the command to take effect.");
-		} else {
-			System.out.println ("Unable to send AAFS server command to stop polling Comcat.");
-		}
+		System.out.println (VersionInfo.get_title());
 
 		return;
 	}
@@ -454,14 +757,14 @@ public class ServerCmd {
 			}
 			return;
 
-		// Subcommand : start_pdl
+		// Subcommand : start_with_pdl
 		// Command format:
-		//  start_pdl  [pdl_option...]
+		//  start_with_pdl  [pdl_option...]
 		// Run the server, after parsing PDL options.
 
-		case "start_pdl":
+		case "start_with_pdl":
 			try {
-				cmd_start_pdl(args);
+				cmd_start_with_pdl(args);
             } catch (Exception e) {
                 e.printStackTrace();
 			}
@@ -488,6 +791,19 @@ public class ServerCmd {
 		case "stop_comcat_poll":
 			try {
 				cmd_stop_comcat_poll(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+			}
+			return;
+
+		// Subcommand : show_version
+		// Command format:
+		//  show_version
+		// Print version info to the standard output.
+
+		case "show_version":
+			try {
+				cmd_show_version(args);
             } catch (Exception e) {
                 e.printStackTrace();
 			}

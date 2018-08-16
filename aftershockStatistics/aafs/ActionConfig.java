@@ -135,6 +135,13 @@ public class ActionConfig {
 		return param_set.comcat_retry_min_gap;
 	}
 
+	// Get minimum ComCat retry lag for missing events, in milliseconds.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long get_comcat_retry_missing () {
+		return param_set.comcat_retry_missing;
+	}
+
 	// Get minimum time after an earthquake at which sequence-specific forecasts can be generated, in milliseconds.
 	// Must be a whole number of seconds, between 1 and 10^9 seconds.
 
@@ -261,6 +268,20 @@ public class ActionConfig {
 
 	public long get_poll_long_intake_gap () {
 		return param_set.poll_long_intake_gap;
+	}
+
+	// Get maximum allowed age for PDL intake.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long get_pdl_intake_max_age () {
+		return param_set.pdl_intake_max_age;
+	}
+
+	// Get maximum allowed time in future for PDL intake.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long get_pdl_intake_max_future () {
+		return param_set.pdl_intake_max_future;
 	}
 
 	// Get the first element of forecast_lags that is >= the supplied min_lag.

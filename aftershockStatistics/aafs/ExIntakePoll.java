@@ -97,7 +97,7 @@ public class ExIntakePoll extends ServerExecTask {
 				// If timeline is not found or stopped, then drop the event
 
 				if (retval2 != RESCODE_SUCCESS) {
-					return RESCODE_DELETE;		// Just delete, so that log is not flooded with poll notifications
+					return RESCODE_DELETE_TIMELINE_NO_ALIAS;	// Just delete, so that log is not flooded with poll notifications
 				}
 
 				//--- Intake check
@@ -110,7 +110,7 @@ public class ExIntakePoll extends ServerExecTask {
 				// If none, then drop the event
 
 				if (intake_region2 == null) {
-					return RESCODE_DELETE;		// Just delete, so that log is not flooded with poll notifications
+					return RESCODE_DELETE_INTAKE_FILTERED;		// Just delete, so that log is not flooded with poll notifications
 				}
 
 				//--- Final steps
@@ -136,7 +136,7 @@ public class ExIntakePoll extends ServerExecTask {
 				return RESCODE_SUCCESS;
 			}
 
-			return RESCODE_DELETE;		// Just delete, so that log is not flooded with PDL notifications
+			return RESCODE_DELETE_TIMELINE_BAD_STATE;		// Just delete, so that log is not flooded with PDL notifications
 
 		case RESCODE_TIMELINE_NOT_FOUND:
 			break;
@@ -165,7 +165,7 @@ public class ExIntakePoll extends ServerExecTask {
 		// If timeline is not found or stopped, then drop the event
 
 		if (retval != RESCODE_SUCCESS) {
-			return RESCODE_DELETE;		// Just delete, so that log is not flooded with poll notifications
+			return RESCODE_DELETE_TIMELINE_NO_ALIAS;		// Just delete, so that log is not flooded with poll notifications
 		}
 
 		//--- Intake check
@@ -178,7 +178,7 @@ public class ExIntakePoll extends ServerExecTask {
 		// If none, then drop the event
 
 		if (intake_region == null) {
-			return RESCODE_DELETE;		// Just delete, so that log is not flooded with poll notifications
+			return RESCODE_DELETE_INTAKE_FILTERED;		// Just delete, so that log is not flooded with poll notifications
 		}
 
 		//--- Final steps
@@ -190,7 +190,7 @@ public class ExIntakePoll extends ServerExecTask {
 			sg.task_disp.get_action_config(),
 			task.get_event_id(),
 			fcmain,
-			TimelineStatus.FCORIG_PDL,
+			TimelineStatus.FCORIG_POLL,
 			TimelineStatus.FCSTAT_ACTIVE_INTAKE);
 
 		// If the command contains analyst data, save it
@@ -214,10 +214,12 @@ public class ExIntakePoll extends ServerExecTask {
 	// Convert event ID to timeline ID for an intake poll command.
 	// Returns values:
 	//  RESCODE_SUCCESS = The task already contains a timeline ID.
-	//  RESCODE_STAGE = The task is being staged for retry, either to start over with
-	//    a timeline ID in place of an event ID, or to retry a failed Comcat operation.
+	//  RESCODE_STAGE_TIMELINE_ID or RESCODE_STAGE_COMCAT_RETRY = The task is being staged
+	//    for retry, either to start over with a timeline ID in place of an event ID, or
+	//    to retry a failed Comcat operation.
 	//  RESCODE_INTAKE_COMCAT_FAIL = Comcat retries exhausted, the command has failed.
-	//  RESCODE_DELETE = The task should be deleted without being logged.
+	//  RESCODE_DELETE_NOT_IN_COMCAT or RESCODE_DELETE_INTAKE_FILTERED = The task
+	//    should be deleted without being logged.
 	//  RESCODE_TASK_CORRUPT = The task payload is corrupted.
 	// Note: This function is the same as TimelineSupport.intake_event_id_to_timeline_id,
 	// except that it checks the intake filter.
@@ -253,15 +255,10 @@ public class ExIntakePoll extends ServerExecTask {
 		// Get mainshock parameters for an event ID
 
 		ForecastMainshock fcmain = new ForecastMainshock();
-
 		int retval;
 
 		try {
 			retval = sg.alias_sup.get_mainshock_for_event_id (task.get_event_id(), fcmain);
-
-			//if (retval == RESCODE_ALIAS_NOT_IN_COMCAT) {
-			//	throw new ComcatException ("ExIntakePoll.intake_poll_event_id_to_timeline_id: Comcat does not recognize event ID: " + task.get_event_id());
-			//}
 		}
 
 		// Handle Comcat exception
@@ -272,8 +269,8 @@ public class ExIntakePoll extends ServerExecTask {
 
 		// If event not in Comcat, then drop the event
 
-		if (retval == RESCODE_ALIAS_NOT_IN_COMCAT) {
-			return RESCODE_DELETE;		// Just delete, so that log is not flooded with notifications
+		if (retval == RESCODE_ALIAS_EVENT_NOT_IN_COMCAT) {
+			return RESCODE_DELETE_NOT_IN_COMCAT;		// Just delete, so that log is not flooded with notifications
 		}
 
 		//--- Intake check
@@ -286,7 +283,7 @@ public class ExIntakePoll extends ServerExecTask {
 		// If none, then drop the event
 
 		if (intake_region == null) {
-			return RESCODE_DELETE;		// Just delete, so that log is not flooded with notifications
+			return RESCODE_DELETE_INTAKE_FILTERED;		// Just delete, so that log is not flooded with notifications
 		}
 
 		//--- Final steps
@@ -297,12 +294,16 @@ public class ExIntakePoll extends ServerExecTask {
 			sg.alias_sup.write_mainshock_to_new_timeline (fcmain);
 		}
 
+		// Delete any other intake poll command with the same timeline ID
+
+		sg.task_sup.delete_all_waiting_tasks (fcmain.timeline_id, OPCODE_INTAKE_POLL);
+
 		// Stage the task, using the timeline ID in place of the event ID, for immediate execution
 
 		sg.task_disp.set_taskres_stage (sg.task_sup.get_prompt_exec_time(),		// could use EXEC_TIME_MIN_WAITING
 										task.get_stage(),
 										fcmain.timeline_id);
-		return RESCODE_STAGE;
+		return RESCODE_STAGE_TIMELINE_ID;
 	}
 
 
@@ -311,8 +312,8 @@ public class ExIntakePoll extends ServerExecTask {
 	// Replace event ID with delayed event ID for a delayed command.
 	// Returns values:
 	//  RESCODE_SUCCESS = The task is not a delayed command.
-	//  RESCODE_STAGE = The task is being staged for retry, to convert a delayed command
-	//    into a non-delayed command.
+	//  RESCODE_STAGE_EVENT_ID = The task is being staged for retry, to
+	//    convert a delayed command into a non-delayed command.
 	//  RESCODE_TASK_CORRUPT = The task payload is corrupted.
 
 	private int intake_poll_delayed (PendingTask task) {
@@ -343,12 +344,16 @@ public class ExIntakePoll extends ServerExecTask {
 
 		//--- Final steps
 
+		// Delete any other intake poll command with the same event ID
+
+		sg.task_sup.delete_all_waiting_tasks (payload.delayed_event_id, OPCODE_INTAKE_POLL);
+
 		// Stage the task, using the delayed event ID in place of the event ID, for immediate execution
 
 		sg.task_disp.set_taskres_stage (sg.task_sup.get_prompt_exec_time(),		// could use EXEC_TIME_MIN_WAITING
 										task.get_stage(),
 										payload.delayed_event_id);
-		return RESCODE_STAGE;
+		return RESCODE_STAGE_EVENT_ID;
 	}
 
 

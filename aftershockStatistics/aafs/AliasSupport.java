@@ -26,6 +26,8 @@ import scratch.aftershockStatistics.util.SimpleUtils;
 
 import scratch.aftershockStatistics.CompactEqkRupList;
 import scratch.aftershockStatistics.ComcatException;
+import scratch.aftershockStatistics.ComcatConflictException;
+import scratch.aftershockStatistics.ComcatRemovedException;
 
 /**
  * Support functions for aliases.
@@ -280,7 +282,7 @@ public class AliasSupport extends ServerComponent {
 					for (Iterator<String> it = new_assigment.get_comcat_id_iterator(); it.hasNext(); ) {
 						String id2 = it.next();
 						if (assignments.contains_absent_id (id2)) {
-							throw new ComcatException ("AliasSupport.merge_from_comcat: Encountered absent ID: " + id2);
+							throw new ComcatConflictException ("AliasSupport.merge_from_comcat: Encountered absent ID: " + id2);
 						}
 						out_queue.add (id2);
 					}
@@ -384,8 +386,14 @@ public class AliasSupport extends ServerComponent {
 			try {
 				merge_from_comcat (cc_assignments, cc_in_queue, db_in_queue);
 			}
-			catch (Exception e) {
+			catch (ComcatConflictException e) {
+				throw new ComcatConflictException ("AliasSupport.dual_merge_database_comcat: Comcat error while merging", e);
+			}
+			catch (ComcatException e) {
 				throw new ComcatException ("AliasSupport.dual_merge_database_comcat: Comcat error while merging", e);
+			}
+			catch (Exception e) {
+				throw new ComcatConflictException ("AliasSupport.dual_merge_database_comcat: Comcat error while merging", e);
 			}
 
 			// Merge from database
@@ -1190,20 +1198,26 @@ public class AliasSupport extends ServerComponent {
 		cc_assignments.check_invariant();
 		cc_assignments.check_invariant_db();
 
+		// Begin summary information
+
+		StringBuilder summary_info = new StringBuilder();
+
 		// Report live timelines
 
 		for (AliasAssignment aa : live_timelines) {
-			if (alias_verbose) {
-				System.out.println ("Alias: Live timeline ID = " + aa.get_timeline_id());
-			}
+			//if (alias_verbose) {
+			//	System.out.println ("Alias: Live timeline ID = " + aa.get_timeline_id());
+			//}
+			summary_info.append (aa.one_line_string() + " live\n");
 		}
 
 		// Report dead timelines
 
 		for (AliasAssignment aa : dead_timelines) {
-			if (alias_verbose) {
-				System.out.println ("Alias: Dead timeline ID = " + aa.get_timeline_id());
-			}
+			//if (alias_verbose) {
+			//	System.out.println ("Alias: Dead timeline ID = " + aa.get_timeline_id());
+			//}
+			summary_info.append (aa.one_line_string() + " dead\n");
 		}
 
 		// Write tasks for the new timelines
@@ -1224,9 +1238,10 @@ public class AliasSupport extends ServerComponent {
 				0,														// stage
 				alias_split_payload.marshal_task());					// details
 
-			if (alias_verbose) {
-				System.out.println ("Alias: Split timeline ID = " + aa.get_timeline_id());
-			}
+			//if (alias_verbose) {
+			//	System.out.println ("Alias: Split timeline ID = " + aa.get_timeline_id());
+			//}
+			summary_info.append (aa.one_line_string() + " split\n");
 		}
 
 		// Write tasks for the revived timelines
@@ -1247,9 +1262,10 @@ public class AliasSupport extends ServerComponent {
 				0,														// stage
 				alias_revive_payload.marshal_task());					// details
 
-			if (alias_verbose) {
-				System.out.println ("Alias: Revived timeline ID = " + aa.get_timeline_id());
-			}
+			//if (alias_verbose) {
+			//	System.out.println ("Alias: Revived timeline ID = " + aa.get_timeline_id());
+			//}
+			summary_info.append (aa.one_line_string() + " revived\n");
 		}
 
 		// Write tasks for the stopped timelines
@@ -1270,10 +1286,23 @@ public class AliasSupport extends ServerComponent {
 				0,														// stage
 				alias_stop_payload.marshal_task());						// details
 
-			if (alias_verbose) {
-				System.out.println ("Alias: Stopped timeline ID = " + aa.get_timeline_id());
-			}
+			//if (alias_verbose) {
+			//	System.out.println ("Alias: Stopped timeline ID = " + aa.get_timeline_id());
+			//}
+			summary_info.append (aa.one_line_string() + " stopped\n");
 		}
+
+		// Finish the summary information
+
+		summary_info.append ("removed IDs = " + Arrays.toString (cc_assignments.get_all_removed_ids_as_array()));
+		String summary_string = summary_info.toString();
+
+		if (alias_verbose) {
+			System.out.println ("Alias: Update summary:");
+			System.out.println (summary_string);
+		}
+
+		sg.log_sup.report_alias_family_updated (family_time, summary_string);
 
 		// Write the new alias family
 
@@ -1291,11 +1320,39 @@ public class AliasSupport extends ServerComponent {
 	// Return values:
 	//  RESCODE_SUCCESS - Timeline exists, mainshock parameters are in fcmain and
 	//    agree with the current aliases, fcmain.timeline_id contains the timeline ID.
-	//  RESCODE_ALIAS_NOT_FOUND - The timeline ID is not in the alias database.
+	//  RESCODE_ALIAS_TIMELINE_NOT_FOUND - The timeline ID is not in the alias database.
 	//  RESCODE_ALIAS_STOPPED - The timeline ID refers to a stopped timeline.
-	// The function throws ComcatException if the operation cannot be completed due to
-	// a problem with Comcat.
+	// The function throws ComcatException or ComcatConflictException if the operation
+	//  cannot be completed due to a problem with Comcat.
 	// Any other exception may indicate a problem with the database.
+	//
+	// Usage notes:
+	//
+	// This function is used for tasks that contain a timeline ID in the event_id field,
+	//  after checking whether a TimelineEntry for that timeline ID exists.
+	//
+	// If it is a generate task (e.g. forecast), then:
+	//  RESCODE_ALIAS_TIMELINE_NOT_FOUND indicates that the alias database is inconsistent
+	//    with the timeline database.  The appropriate action is to throw DBCorruptException.
+	//  RESCODE_ALIAS_STOPPED indicates that the corresponding event has been deleted
+	//    from Comcat.  The appropriate action is to throw ComcatRemovedException, which
+	//    invokes the Comcat retry logic to monitor if an event deleted from Comcat is
+	//    later restored.
+	//
+	// Note that a generate task may not call this function if the TimelineEntry does not
+	//  exist.  It must fail itself in this case.
+	//
+	// If it is an intake task (including analyst-intervene and split), then:
+	//  RESCODE_ALIAS_TIMELINE_NOT_FOUND indicates that an external user or process
+	//    supplied an invalid timeline ID.  The appropriate action is to fail the task.
+	//    (It could also indicate a problem with the database, but we ignore this.)
+	//  RESCODE_ALIAS_STOPPED indicates that the task refers to an event that is not in
+	//    Comcat, or was deleted from Comcat since the original event ID was checked.
+	//    The appropriate action is to fail the task.
+	//
+	// Note that analyst-intervene and intake-sync are not allowed to call this function if
+	//  the TimelineEntry exists.  They must operate without calling this function (or any
+	//  other function that requires Comcat access).
 
 	public int get_mainshock_for_timeline_id (String timeline_id, ForecastMainshock fcmain) {
 
@@ -1308,7 +1365,7 @@ public class AliasSupport extends ServerComponent {
 			AliasFamily alfam = AliasFamily.get_recent_alias_family (0L, 0L, timeline_id, null, null);
 
 			if (alfam == null) {
-				return RESCODE_ALIAS_NOT_FOUND;
+				return RESCODE_ALIAS_TIMELINE_NOT_FOUND;
 			}
 
 			// Read it into an alias assignment list
@@ -1437,36 +1494,31 @@ public class AliasSupport extends ServerComponent {
 
 		// Coming here probably means that Comcat results changed while we were doing this
 
-		throw new ComcatException ("AliasSupport.get_mainshock_for_timeline_id: Comcat data changed during alias update");
+		throw new ComcatConflictException ("AliasSupport.get_mainshock_for_timeline_id: Comcat data changed during alias update");
 	}
 
 
 
 
-	// Get mainshock parameters, given the timeline ID.
+	// Get mainshock parameters, given the timeline ID, for a generate task.
 	// Parameters:
 	//  timeline_id = Timeline ID to search for.
 	//  fcmain = Forecast mainshock structure, to be filled in with mainshock parameters.
 	// Returns RESCODE_SUCCESS.
-	// Return conditions: Timeline exists, mainshock parameters are in fcmain and
-	//  agree with the current aliases, fcmain.timeline_id contains the timeline ID.
-	// The function throws ComcatException if the operation cannot be completed due to
-	//  a problem with Comcat.
-	// The function throws ComcatException if the timeline ID refers to a stopped timeline,
-	//  which permits Comcat retry logic to watch if a deleted event is reinstated.
-	// The function throws DBCorruptException if the timeline ID is not in the alias database.
-	// Any exception other than ComcatException may indicate a problem with the database.
+	// See documentation above.  This function should only be used by a generate task
+	//  (e.g. forecast).  It throws the appropriate exception in case of error, and
+	//  so it always returns success.
 
-	public int get_mainshock_for_timeline_id_ex (String timeline_id, ForecastMainshock fcmain) {
+	public int get_mainshock_for_timeline_id_generate (String timeline_id, ForecastMainshock fcmain) {
 
 		int retval = get_mainshock_for_timeline_id (timeline_id, fcmain);
 
-		if (retval == RESCODE_ALIAS_NOT_FOUND) {
-			throw new DBCorruptException ("AliasSupport.get_mainshock_for_timeline_id_ex: Unknown timeline ID: " + timeline_id);
+		if (retval == RESCODE_ALIAS_TIMELINE_NOT_FOUND) {
+			throw new DBCorruptException ("AliasSupport.get_mainshock_for_timeline_id_generate: Cannot find timeline ID: " + timeline_id);
 		}
 
 		if (retval == RESCODE_ALIAS_STOPPED) {
-			throw new ComcatException ("AliasSupport.get_mainshock_for_timeline_id_ex: Stopped timeline for timeline ID: " + timeline_id);
+			throw new ComcatRemovedException ("AliasSupport.get_mainshock_for_timeline_id_generate: Stopped timeline for timeline ID: " + timeline_id);
 		}
 
 		return retval;
@@ -1482,12 +1534,29 @@ public class AliasSupport extends ServerComponent {
 	// Return values:
 	//  RESCODE_SUCCESS - Timeline exists, mainshock parameters are in fcmain and
 	//    agree with the current aliases, fcmain.timeline_id contains the timeline ID.
-	//  RESCODE_ALIAS_NOT_IN_COMCAT - The event ID is not known to Comcat.
+	//  RESCODE_ALIAS_EVENT_NOT_IN_COMCAT - The event ID is not known to Comcat.
 	//  RESCODE_ALIAS_NEW_EVENT - The event ID is not in the alias database, mainshock
 	//    parameters are in fcmain.
-	// The function throws ComcatException if the operation cannot be completed due to
-	// a problem with Comcat.
+	// The function throws ComcatException or ComcatConflictException if the operation
+	//  cannot be completed due to a problem with Comcat.
 	// Any other exception may indicate a problem with the database.
+	//
+	// Usage notes:
+	//
+	// This function is used for tasks that contain a Comcat ID in the event_id field,
+	//  and need to convert it into a timeline ID that is used to stage the task.
+	//
+	// This function can only be used by intake tasks (including analyst-intervene and split).
+	//
+	// RESCODE_ALIAS_EVENT_NOT_IN_COMCAT indicates that the event ID is not in Comcat,
+	//   and no information is available.  (The alias database is not checked.)  The
+	//   appropriate action is to fail the task.
+	//
+	// RESCODE_ALIAS_NEW_EVENT indicates that the event ID is in Comcat, and information
+	//   is returned in fcmain, but the event is not in the alias database.  The
+	//   appropriate action is to examine the information and determine if it is desired
+	//   to continue.  If so, then call write_mainshock_to_new_timeline to insert the
+	//   event into the alias database and obtain the timeline ID.
 
 	public int get_mainshock_for_event_id (String event_id, ForecastMainshock fcmain) {
 
@@ -1502,7 +1571,7 @@ public class AliasSupport extends ServerComponent {
 			// If we didn't find the event in Comcat, return
 
 			if (!( fcmain.mainshock_avail )) {
-				return RESCODE_ALIAS_NOT_IN_COMCAT;
+				return RESCODE_ALIAS_EVENT_NOT_IN_COMCAT;
 			}
 
 			// Get it into an assignment
@@ -1557,39 +1626,7 @@ public class AliasSupport extends ServerComponent {
 
 		// Coming here probably means that Comcat results changed while we were doing this
 
-		throw new ComcatException ("AliasSupport.get_mainshock_for_event_id: Comcat data changed during alias update");
-	}
-
-
-
-
-	// Get mainshock parameters, given the event ID.
-	// Parameters:
-	//  event_id = Event ID to search for.
-	//  fcmain = Forecast mainshock structure, to be filled in with mainshock parameters.
-	// Returns RESCODE_SUCCESS if the timeline already existed, RESCODE_ALIAS_NEW_EVENT if not.
-	// Return conditions: Timeline exists, mainshock parameters are in fcmain and
-	//   agree with the current aliases, fcmain.timeline_id contains the timeline ID.
-	// If there is currently no timeline for the event ID, this function creates one.
-	// The function throws ComcatException if the operation cannot be completed due to
-	//  a problem with Comcat.
-	// The function throws ComcatException if the event ID is not found in Comcat, which
-	//  permits Comcat retry logic to watch if a deleted event is reinstated.
-	// Any exception other than ComcatException may indicate a problem with the database.
-
-	public int get_mainshock_for_event_id_ex (String event_id, ForecastMainshock fcmain) {
-
-		int retval = get_mainshock_for_event_id (event_id, fcmain);
-
-		if (retval == RESCODE_ALIAS_NOT_IN_COMCAT) {
-			throw new ComcatException ("AliasSupport.get_mainshock_for_timeline_id_ex: Comcat does not recognize event ID: " + event_id);
-		}
-
-		if (retval == RESCODE_ALIAS_NEW_EVENT) {
-			write_mainshock_to_new_timeline (fcmain);
-		}
-
-		return retval;
+		throw new ComcatConflictException ("AliasSupport.get_mainshock_for_event_id: Comcat data changed during alias update");
 	}
 
 
@@ -1634,6 +1671,8 @@ public class AliasSupport extends ServerComponent {
 		cc_aalist.check_invariant_db();
 
 		// Write the new alias family
+
+		sg.log_sup.report_alias_family_created (family_time, cc_aa.one_line_string());
 
 		AliasFamily.submit_alias_family (null, family_time, cc_aalist);
 		return;

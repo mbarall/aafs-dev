@@ -1,6 +1,10 @@
 package scratch.aftershockStatistics.aafs;
 
 import java.util.List;
+import java.util.LinkedHashSet;
+
+import java.io.IOException;
+import java.io.PrintStream;
 
 import scratch.aftershockStatistics.aafs.entity.PendingTask;
 import scratch.aftershockStatistics.aafs.entity.LogEntry;
@@ -11,6 +15,7 @@ import scratch.aftershockStatistics.aafs.entity.AliasFamily;
 import scratch.aftershockStatistics.util.MarshalReader;
 import scratch.aftershockStatistics.util.MarshalWriter;
 import scratch.aftershockStatistics.util.SimpleUtils;
+import scratch.aftershockStatistics.util.TimeSplitOutputStream;
 
 import scratch.aftershockStatistics.ComcatException;
 import scratch.aftershockStatistics.CompactEqkRupList;
@@ -247,6 +252,10 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 	private long polling_delay = 30000L;			// 30 seconds
 
+	// The minimum polling delay, in milliseconds.
+
+	private long polling_delay_min = 1000L;			// 1 second
+
 	// The minimum delay before restarting after failure, in milliseconds.
 
 	private long restart_delay_min = 20000L;		// 20 seconds
@@ -262,9 +271,121 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 
 
+	//----- Idle time -----
+
+	// The console log output stream, or null if none.
+
+	private TimeSplitOutputStream console_log_tsop = null;
+
+	// The summary log output stream, or null if none.
+
+	private TimeSplitOutputStream summary_log_tsop = null;
+
+	// List of all time split output streams.
+
+	private LinkedHashSet<TimeSplitOutputStream> tsop_list;
+
+
+	// Get the console log output stream, or null if none.
+
+	public TimeSplitOutputStream get_console_log_tsop () {
+		return console_log_tsop;
+	}
+
+
+	// Set the console log output stream, or null if none.
+
+	public void set_console_log_tsop (TimeSplitOutputStream the_console_log_tsop) {
+		remove_tsop (console_log_tsop);
+		console_log_tsop = the_console_log_tsop;
+		add_tsop (console_log_tsop);
+		return;
+	}
+
+
+	// Get the summary log output stream, or null if none.
+
+	public TimeSplitOutputStream get_summary_log_tsop () {
+		return summary_log_tsop;
+	}
+
+
+	// Set the summary log output stream, or null if none.
+
+	public void set_summary_log_tsop (TimeSplitOutputStream the_summary_log_tsop) {
+		remove_tsop (summary_log_tsop);
+		summary_log_tsop = the_summary_log_tsop;
+		add_tsop (summary_log_tsop);
+
+		// Set summary log destination
+
+		sg.log_sup.set_summary_log_out (summary_log_tsop);
+
+		return;
+	}
+
+
+
+
+	// Add a time split output stream.
+	// If tsop is null, then perform no operation.
+	// Note: The idle time code ignores any exceptions thrown by tsop.redirect().
+	// If exception handling is required, you should subclass TimeSplitOutputStream
+	// and override the redirect() method.
+
+	public void add_tsop (TimeSplitOutputStream tsop) {
+		if (tsop != null) {
+			tsop_list.add (tsop);
+		}
+		return;
+	}
+
+
+
+
+	// Remove a time split output stream, if it is currently in the list.
+	// If upstream is null, then perform no operation.
+
+	public void remove_tsop (TimeSplitOutputStream tsop) {
+		if (tsop != null) {
+			tsop_list.remove (tsop);
+		}
+		return;
+	}
+
+
+
+
+	// Run idle time operations.
+	// On entry, task context variables are set up:
+	//  dispatcher_time, dispatcher_true_time, dispatcher_action_config
+
+	private void exec_idle_time () {
+
+		// Redirect time split output streams
+
+		for (TimeSplitOutputStream tsop : tsop_list) {
+			try {
+				tsop.redirect (dispatcher_true_time);
+			} catch (IOException e) {
+			}
+		}
+
+		return;
+	}
+
+
+
+
 	//----- Construction -----
 
 	public TaskDispatcher () {
+
+		// Idle time initialization
+
+		console_log_tsop = null;
+		summary_log_tsop = null;
+		tsop_list = new LinkedHashSet<TimeSplitOutputStream>();
 
 		// Create and initialize the server group
 
@@ -387,6 +508,8 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 				// If first connection ...
 
 				if (dispatcher_state == STATE_FIRST_CONNECT) {
+
+					sg.log_sup.report_dispatcher_start ();
 				
 					// Remove any shutdown commands from the task queue
 
@@ -401,6 +524,10 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 					// Initialize Comcat polling, begin disabled
 
 					sg.poll_sup.init_polling_disabled();
+				}
+
+				else {
+					sg.log_sup.report_dispatcher_restart ();
 				}
 
 				// Polling loop, continue until shutdown or exception
@@ -434,11 +561,24 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 						dispatcher_state = STATE_WAITING;
 
-						// If none, wait for the polling delay
+						// Execute idle time operations
 
-						try {
-							Thread.sleep(polling_delay);
-						} catch (InterruptedException e) {
+						exec_idle_time();
+
+						// Get polling delay, allowing for time consumed by idle time operations
+
+						long eff_polling_delay = dispatcher_true_time + polling_delay - ServerClock.get_true_time();
+						if (eff_polling_delay > polling_delay) {
+							eff_polling_delay = polling_delay;
+						}
+
+						// Wait for the polling delay
+
+						if (eff_polling_delay >= polling_delay_min) {
+							try {
+								Thread.sleep(eff_polling_delay);
+							} catch (InterruptedException e) {
+							}
 						}
 
 					} else {
@@ -464,16 +604,19 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 				if (task != null) {
 					System.err.println ("Failing task: " + task.toString());
 				}
+				sg.log_sup.report_dispatcher_exception (task, e);
 			} catch (Throwable e) {
 				e.printStackTrace();
 				if (task != null) {
 					System.err.println ("Failing task: " + task.toString());
 				}
+				sg.log_sup.report_dispatcher_exception (task, e);
 			}
 
 			// If normal shutdown, exit the restart loop
 
 			if (dispatcher_state == STATE_SHUTDOWN) {
+				sg.log_sup.report_dispatcher_shutdown ();
 				break;
 			}
 
@@ -481,6 +624,7 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 			// (because this might be a configuration error)
 
 			if (dispatcher_state == STATE_FIRST_CONNECT) {
+				sg.log_sup.report_dispatcher_immediate_shutdown ();
 				break;
 			}
 
@@ -620,8 +764,8 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 	//   taskres_log_time = dispatcher_time.
 	//   taskres_log_remark = "".
 	// The execution function must return a result code (RESCODE_XXXXX).
-	//   RESCODE_DELETE deletes the current task, with no other action.
-	//   RESCODE_STAGE stages the current task, using taskres_exec_time,
+	//   RESCODE_DELETE_XXXXX deletes the current task, with no other action.
+	//   RESCODE_STAGE_XXXXX stages the current task, using taskres_exec_time,
 	//    taskres_stage, and taskres_event_id.
 	//   Any other return writes a log entry with the given result code, using
 	//     taskres_log_time and taskres_log_remark; and then deletes the current task.
@@ -662,6 +806,7 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 			if (task.is_restarted()) {
 
+				System.out.println (LOG_SEPARATOR_LINE);
 				display_taskinfo ("TASK-RESTART: " + SimpleUtils.time_to_string (dispatcher_time) + "\n"
 					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
 					+ "event_id = " + task.get_event_id() + "\n"
@@ -669,6 +814,7 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 			} else {
 
+				System.out.println (LOG_SEPARATOR_LINE);
 				display_taskinfo ("TASK-BEGIN: " + SimpleUtils.time_to_string (dispatcher_time) + "\n"
 					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
 					+ "event_id = " + task.get_event_id() + "\n"
@@ -676,6 +822,12 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 			}
 
+		}
+
+		if (task.is_restarted()) {
+			sg.log_sup.report_task_restart (task);
+		} else {
+			sg.log_sup.report_task_begin (task);
 		}
 
 		// Invoke the execution function, depending on the opcode
@@ -701,6 +853,7 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
 					+ "rescode = " + get_rescode_as_string (rescode));
 			}
+			sg.log_sup.report_task_end (task, rescode);
 
 			// Log the task
 
@@ -713,13 +866,21 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 			break;
 
 		case RESCODE_DELETE:
+		case RESCODE_DELETE_TIMELINE_EXISTS:
+		case RESCODE_DELETE_INTAKE_FILTERED:
+		case RESCODE_DELETE_INTAKE_AGED:
+		case RESCODE_DELETE_TIMELINE_NO_ALIAS:
+		case RESCODE_DELETE_TIMELINE_BAD_STATE:
+		case RESCODE_DELETE_NOT_IN_COMCAT:
 
 			// Display message
 
 			if (dispatcher_verbose) {
 				display_taskinfo ("TASK-DELETE:\n"
-					+ "opcode = " + get_opcode_as_string (task.get_opcode()));
+					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
+					+ "rescode = " + get_rescode_as_string (rescode));
 			}
+			sg.log_sup.report_task_delete (task, rescode);
 
 			// Remove the task from the queue
 
@@ -728,16 +889,24 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 			break;
 
 		case RESCODE_STAGE:
+		case RESCODE_STAGE_COMCAT_RETRY:
+		case RESCODE_STAGE_PDL_RETRY:
+		case RESCODE_STAGE_EVENT_ID:
+		case RESCODE_STAGE_TIMELINE_ID:
+		case RESCODE_STAGE_TOO_SOON:
+		case RESCODE_STAGE_REPEATING_TASK:
 
 			// Display message
 
 			if (dispatcher_verbose) {
 				display_taskinfo ("TASK-STAGE:\n"
 					+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
+					+ "rescode = " + get_rescode_as_string (rescode) + "\n"
 					+ "taskres_exec_time = " + SimpleUtils.time_to_string (taskres_exec_time) + "\n"
 					+ "taskres_stage = " + taskres_stage + "\n"
 					+ "taskres_event_id = " + ((taskres_event_id == null) ? "null" : taskres_event_id) );
 			}
+			sg.log_sup.report_task_stage (task, rescode, taskres_event_id, taskres_stage, taskres_exec_time);
 
 			// Stage the task, so it will execute again
 
@@ -785,6 +954,24 @@ public class TaskDispatcher extends ServerComponent implements Runnable {
 
 	public ServerGroup get_server_group () {
 		return sg;
+	}
+
+
+
+
+	// Execute the idle time operations.
+	// This set up the task context and executes the idle time operations.
+	// This is a test function.
+
+	public void test_exec_idle_time () {
+
+		dispatcher_time = ServerClock.get_time();
+		dispatcher_true_time = ServerClock.get_true_time();
+		dispatcher_action_config = new ActionConfig();
+	
+		exec_idle_time();
+
+		return;
 	}
 
 }

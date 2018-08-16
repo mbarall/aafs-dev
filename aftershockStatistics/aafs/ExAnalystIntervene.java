@@ -60,6 +60,12 @@ public class ExAnalystIntervene extends ServerExecTask {
 
 		case RESCODE_TIMELINE_EXISTS:
 
+			// Note: If the timeline exists, then this task is not allowed to
+			// make any calls to Comcat.  This restriction ensures that analyst
+			// options sent to an existing timeline ID are processed in the
+			// order that they are submitted.  (Comcat calls could lead to
+			// Comcat retries, which could re-order tasks.)
+
 			// If request to start generating forecasts ...
 
 			if (payload.state_change == OpAnalystIntervene.ASREQ_START && tstatus.can_analyst_start()) {
@@ -186,15 +192,22 @@ public class ExAnalystIntervene extends ServerExecTask {
 		// Get mainshock parameters
 
 		ForecastMainshock fcmain = new ForecastMainshock();
+		int retval;
 
 		try {
-			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), fcmain);
+			retval = sg.alias_sup.get_mainshock_for_timeline_id (task.get_event_id(), fcmain);
 		}
 
 		// An exception here triggers a ComCat retry
 
 		catch (ComcatException e) {
 			return sg.timeline_sup.intake_setup_comcat_retry (task, e);
+		}
+
+		// If timeline is not found or stopped, just return
+
+		if (retval != RESCODE_SUCCESS) {
+			return retval;
 		}
 
 		//--- Final steps

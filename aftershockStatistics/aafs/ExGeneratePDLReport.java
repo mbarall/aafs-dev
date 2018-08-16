@@ -104,6 +104,8 @@ public class ExGeneratePDLReport extends ServerExecTask {
 
 		catch (Exception e) {
 
+			sg.log_sup.report_pdl_send_exception (tstatus, e);
+
 			// Get current PDL lag from the stage
 
 			long new_next_pdl_lag = sg.task_disp.get_action_config().int_to_lag (task.get_stage());
@@ -122,7 +124,7 @@ public class ExGeneratePDLReport extends ServerExecTask {
 				sg.task_disp.set_taskres_stage (payload.base_pdl_time + new_next_pdl_lag,
 									sg.task_disp.get_action_config().lag_to_int (new_next_pdl_lag));
 
-				return RESCODE_STAGE;
+				return RESCODE_STAGE_PDL_RETRY;
 			}
 
 			// PDL report failed
@@ -142,6 +144,8 @@ public class ExGeneratePDLReport extends ServerExecTask {
 
 			return RESCODE_TIMELINE_PDL_FAIL;
 		}
+
+		sg.log_sup.report_pdl_send_ok (tstatus);
 
 		//--- Final steps
 

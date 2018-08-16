@@ -13,6 +13,8 @@ import scratch.aftershockStatistics.util.MarshalWriter;
 import scratch.aftershockStatistics.util.SimpleUtils;
 
 import scratch.aftershockStatistics.ComcatException;
+import scratch.aftershockStatistics.ComcatConflictException;
+import scratch.aftershockStatistics.ComcatRemovedException;
 import scratch.aftershockStatistics.CompactEqkRupList;
 
 /**
@@ -161,10 +163,14 @@ public class TimelineSupport extends ServerComponent {
 
 				// Unwind the task, by deleting the timeline entry
 
+				sg.log_sup.report_timeline_entry_deleted (task.get_event_id());
+
 				TimelineEntry.delete_timeline_entry (tentry);
 			}
 
 			//--- Undo the pending task, so it can start over from the beginning
+
+			sg.log_sup.report_timeline_unwind (task.get_event_id());
 
 			// Delete the catalog entry if we have it
 
@@ -265,6 +271,8 @@ public class TimelineSupport extends ServerComponent {
 			+ "Timeline entry details dump:\n" + tentry.dump_details() + "\n"
 			+ "Stack trace:\n" + SimpleUtils.getStackTraceAsString(e));
 
+		sg.log_sup.report_corrupt_timeline_exception (tentry, task, e);
+
 		// If the timeline entry is not marked as error, then add a new timeline entry
 
 		if (tentry.get_actcode() != TimelineStatus.ACTCODE_ERROR) {
@@ -285,6 +293,8 @@ public class TimelineSupport extends ServerComponent {
 				comcat_ids,													// comcat_ids
 				TimelineStatus.ACTCODE_ERROR,								// actcode
 				null);														// details
+
+			sg.log_sup.report_timeline_error_appended (tentry.get_event_id());
 		}
 
 		return;
@@ -299,6 +309,8 @@ public class TimelineSupport extends ServerComponent {
 	public void process_timeline_comcat_fail (PendingTask task, TimelineStatus tstatus, Exception e) {
 
 		// Display messages
+			
+		sg.log_sup.report_comcat_exception (task.get_event_id(), e);
 		
 		sg.task_disp.set_display_taskres_log ("TASK-ERR: Timeline stopped due to ComCat failure:\n"
 			+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
@@ -322,22 +334,32 @@ public class TimelineSupport extends ServerComponent {
 	// Stage the task to retry the Comcat operation.
 	// If retries are exhausted, then fail the operation.
 	// Return values:
-	//  RESCODE_STAGE = The task is being staged for retry.
+	//  RESCODE_STAGE_COMCAT_RETRY = The task is being staged for retry.
 	//  RESCODE_TIMELINE_COMCAT_FAIL = Retries exhausted, the timeline is stopped in Comcat fail state.
 
 	public int process_timeline_comcat_retry (PendingTask task, TimelineStatus tstatus, Exception e) {
 
 		// Get the next ComCat retry lag
 
-		long next_comcat_retry_lag = sg.task_disp.get_action_config().get_next_comcat_retry_lag (
-										sg.task_disp.get_action_config().int_to_lag (task.get_stage()) + 1L );
+		long min_lag = sg.task_disp.get_action_config().int_to_lag (task.get_stage()) + 1L;
+
+		if (e instanceof ComcatRemovedException) {
+			if (min_lag < sg.task_disp.get_action_config().get_comcat_retry_missing()) {
+				min_lag = sg.task_disp.get_action_config().get_comcat_retry_missing();
+			}
+		}
+
+		long next_comcat_retry_lag = sg.task_disp.get_action_config().get_next_comcat_retry_lag (min_lag);
 
 		// If there is another retry, stage the task
 
 		if (next_comcat_retry_lag >= 0L) {
+
+			sg.log_sup.report_comcat_exception (task.get_event_id(), e);
+
 			sg.task_disp.set_taskres_stage (task.get_sched_time() + next_comcat_retry_lag,
 								sg.task_disp.get_action_config().lag_to_int (next_comcat_retry_lag));
-			return RESCODE_STAGE;
+			return RESCODE_STAGE_COMCAT_RETRY;
 		}
 
 		// Retries exhausted, process the error and log the task
@@ -402,6 +424,8 @@ public class TimelineSupport extends ServerComponent {
 				+ "event_id = " + tstatus.event_id + "\n"
 				+ "catalog_eqk_count = " + tstatus.forecast_results.catalog_eqk_count);
 
+			sg.log_sup.report_catalog_saved (tstatus.event_id, tstatus.forecast_results.catalog_eqk_count);
+
 		}
 
 		// Write timeline entry
@@ -423,6 +447,8 @@ public class TimelineSupport extends ServerComponent {
 			+ "fc_status = " + tstatus.get_fc_status_as_string () + "\n"
 			+ "pdl_status = " + tstatus.get_pdl_status_as_string () + "\n"
 			+ "fc_result = " + tstatus.get_fc_result_as_string ());
+
+		sg.log_sup.report_timeline_appended (tstatus);
 
 		// Issue any new delayed command that is needed
 
@@ -622,6 +648,8 @@ public class TimelineSupport extends ServerComponent {
 				sg.task_disp.get_action_config().lag_to_int (next_pdl_lag),	// stage
 				pdl_payload.marshal_task());								// details
 
+			sg.log_sup.report_pdl_report_request (tstatus.event_id, sg.task_disp.get_time() + next_pdl_lag);
+
 			return true;
 		}
 
@@ -643,6 +671,11 @@ public class TimelineSupport extends ServerComponent {
 				0,																// stage
 				forecast_payload.marshal_task());								// details
 
+			sg.log_sup.report_forecast_request (tstatus.event_id,
+				tstatus.forecast_mainshock.mainshock_time + next_forecast_lag 
+				+ sg.task_disp.get_action_config().get_comcat_clock_skew()
+				+ sg.task_disp.get_action_config().get_comcat_origin_skew());
+
 			return true;
 		}
 
@@ -662,6 +695,8 @@ public class TimelineSupport extends ServerComponent {
 				0,														// stage
 				expire_payload.marshal_task());							// details
 
+			sg.log_sup.report_expire_request (tstatus.event_id);
+
 			return true;
 		}
 
@@ -675,10 +710,12 @@ public class TimelineSupport extends ServerComponent {
 
 	// Set up Comcat retry for an intake command, while processing a Comcat exception.
 	// Return values:
-	//  RESCODE_STAGE = The task is being staged for retry.
+	//  RESCODE_STAGE_COMCAT_RETRY = The task is being staged for retry.
 	//  RESCODE_INTAKE_COMCAT_FAIL = Retries exhausted, the task has failed.
 
 	public int intake_setup_comcat_retry (PendingTask task, ComcatException e) {
+
+		sg.log_sup.report_comcat_exception (task.get_event_id(), e);
 
 		// For PDL intake only, delete any other PDL intake commands for this event, so we don't have multiple retries going on
 
@@ -696,7 +733,7 @@ public class TimelineSupport extends ServerComponent {
 		if (next_comcat_intake_lag >= 0L) {
 			sg.task_disp.set_taskres_stage (task.get_sched_time() + next_comcat_intake_lag,
 								sg.task_disp.get_action_config().lag_to_int (next_comcat_intake_lag));
-			return RESCODE_STAGE;
+			return RESCODE_STAGE_COMCAT_RETRY;
 		}
 
 		// Retries exhausted, display the error and log the task
@@ -715,9 +752,11 @@ public class TimelineSupport extends ServerComponent {
 	// Convert event ID to timeline ID for an intake command.
 	// Returns values:
 	//  RESCODE_SUCCESS = The task already contains a timeline ID.
-	//  RESCODE_STAGE = The task is being staged for retry, either to start over with
-	//    a timeline ID in place of an event ID, or to retry a failed Comcat operation.
+	//  RESCODE_STAGE_TIMELINE_ID or RESCODE_STAGE_COMCAT_RETRY = The task is being staged
+	//    for retry, either to start over with a timeline ID in place of an event ID, or
+	//    to retry a failed Comcat operation.
 	//  RESCODE_INTAKE_COMCAT_FAIL = Comcat retries exhausted, the command has failed.
+	//  RESCODE_ALIAS_EVENT_NOT_IN_COMCAT = The event ID is not in Comcat.
 
 	public int intake_event_id_to_timeline_id (PendingTask task) {
 
@@ -730,15 +769,28 @@ public class TimelineSupport extends ServerComponent {
 		// Get mainshock parameters for an event ID
 
 		ForecastMainshock fcmain = new ForecastMainshock();
+		int retval;
 
 		try {
-			sg.alias_sup.get_mainshock_for_event_id_ex (task.get_event_id(), fcmain);
+			retval = sg.alias_sup.get_mainshock_for_event_id (task.get_event_id(), fcmain);
 		}
 
-		// Handle Comcat exception, which includes event ID not found
+		// Handle Comcat exception
 
 		catch (ComcatException e) {
 			return intake_setup_comcat_retry (task, e);
+		}
+
+		// If event not in Comcat, then return
+
+		if (retval == RESCODE_ALIAS_EVENT_NOT_IN_COMCAT) {
+			return RESCODE_ALIAS_EVENT_NOT_IN_COMCAT;
+		}
+
+		// If the event ID has not been seen before, create the alias timeline
+
+		if (retval == RESCODE_ALIAS_NEW_EVENT) {
+			sg.alias_sup.write_mainshock_to_new_timeline (fcmain);
 		}
 
 		// Stage the task, using the timeline ID in place of the event ID, for immediate execution
@@ -746,7 +798,7 @@ public class TimelineSupport extends ServerComponent {
 		sg.task_disp.set_taskres_stage (sg.task_sup.get_prompt_exec_time(),		// could use EXEC_TIME_MIN_WAITING
 										task.get_stage(),
 										fcmain.timeline_id);
-		return RESCODE_STAGE;
+		return RESCODE_STAGE_TIMELINE_ID;
 	}
 
 

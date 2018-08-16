@@ -73,15 +73,22 @@ public class ExAliasSplit extends ServerExecTask {
 		// Get mainshock parameters
 
 		ForecastMainshock fcmain = new ForecastMainshock();
+		int retval;
 
 		try {
-			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), fcmain);
+			retval = sg.alias_sup.get_mainshock_for_timeline_id (task.get_event_id(), fcmain);
 		}
 
 		// An exception here triggers a ComCat retry
 
 		catch (ComcatException e) {
 			return sg.timeline_sup.intake_setup_comcat_retry (task, e);
+		}
+
+		// If timeline is not found or stopped, just return
+
+		if (retval != RESCODE_SUCCESS) {
+			return retval;
 		}
 
 		//--- Intake check

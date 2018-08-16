@@ -5,6 +5,7 @@
   "comcat_clock_skew": "PT3M0S",
   "comcat_origin_skew": "PT2M0S",
   "comcat_retry_min_gap": "PT30S",
+  "comcat_retry_missing": "P0DT1H0M0S",
   "seq_spec_min_lag": "PT3H",
   "advisory_dur_week": "PT1S",
   "advisory_dur_month": "P25D",
@@ -22,6 +23,8 @@
   "poll_long_period": "P1DT0H0M0S",
   "poll_long_lookback": "P330DT0H0M0S",
   "poll_long_intake_gap": "P0DT0H5M0S",
+  "pdl_intake_max_age": "P300D",
+  "pdl_intake_max_future": "P1D",
   "forecast_lags": [
     "P0DT0H20M0S",
     "P0DT6H0M0S",

@@ -111,7 +111,7 @@ public class ExGenerateForecast extends ServerExecTask {
 		ForecastMainshock fcmain = new ForecastMainshock();
 
 		try {
-			sg.alias_sup.get_mainshock_for_timeline_id_ex (task.get_event_id(), fcmain);
+			sg.alias_sup.get_mainshock_for_timeline_id_generate (task.get_event_id(), fcmain);
 		}
 
 		// An exception here triggers a ComCat retry
@@ -133,7 +133,7 @@ public class ExGenerateForecast extends ServerExecTask {
 								+ sg.task_disp.get_action_config().get_comcat_clock_skew()
 								+ sg.task_disp.get_action_config().get_comcat_origin_skew(),
 								task.get_stage());
-			return RESCODE_STAGE;
+			return RESCODE_STAGE_TOO_SOON;
 		}
 
 		//--- Stale forecasts
@@ -215,7 +215,7 @@ public class ExGenerateForecast extends ServerExecTask {
 
 					// Log the task
 
-					return RESCODE_FCAST_STALE;
+					return RESCODE_FORECAST_STALE;
 				}
 			}
 		}
@@ -254,7 +254,7 @@ public class ExGenerateForecast extends ServerExecTask {
 
 			// Log the task
 
-			return RESCODE_FCAST_ANALYST_BLOCKED;
+			return RESCODE_FORECAST_ANALYST_BLOCKED;
 		}
 
 		// If analyst requests normal intake filtering (which is default) ...
@@ -326,7 +326,7 @@ public class ExGenerateForecast extends ServerExecTask {
 
 				// Log the task
 
-				return RESCODE_FCAST_INTAKE_FILTERED;
+				return RESCODE_FORECAST_INTAKE_FILTERED;
 			}
 		}
 
@@ -373,12 +373,24 @@ public class ExGenerateForecast extends ServerExecTask {
 			long centroid_rel_time_hi = DURATION_HUGE;
 			double centroid_mag_floor = sg.task_disp.get_action_config().get_shadow_centroid_mag();
 			double large_mag = sg.task_disp.get_action_config().get_shadow_large_mag();
+			double[] separation = new double[2];
 
 			// Run find_shadow
 
-			ObsEqkRupture shadow = AftershockStatsShadow.find_shadow (rup, time_now,
-				search_radius, search_time_lo, search_time_hi,
-				centroid_rel_time_lo, centroid_rel_time_hi, centroid_mag_floor, large_mag);
+			ObsEqkRupture shadow;
+
+			try {
+				shadow = AftershockStatsShadow.find_shadow (rup, time_now,
+					search_radius, search_time_lo, search_time_hi,
+					centroid_rel_time_lo, centroid_rel_time_hi,
+					centroid_mag_floor, large_mag, separation);
+			}
+
+			// An exception here triggers a ComCat retry
+
+			catch (Exception e) {
+				return sg.timeline_sup.process_timeline_comcat_retry (task, tstatus, e);
+			}
 
 			// If we are shadowed ...
 
@@ -408,7 +420,17 @@ public class ExGenerateForecast extends ServerExecTask {
 					+ "mainshock_time = " + fcmain.mainshock_time + " (" + SimpleUtils.time_to_string(fcmain.mainshock_time) + ")" + "\n"
 					+ "shadow event_id = " + shadow.getEventId() + "\n"
 					+ "shadow mag = " + shadow.getMag() + "\n"
-					+ "shadow time = " + shadow.getOriginTime() + " (" + SimpleUtils.time_to_string(shadow.getOriginTime()) + ")");
+					+ "shadow time = " + shadow.getOriginTime() + " (" + SimpleUtils.time_to_string(shadow.getOriginTime()) + ")" + "\n"
+					+ "distance = " + String.format("%.3f", separation[0]) + " km" + "\n"
+					+ "interval = " + String.format("%.3f", separation[1]) + " days");
+
+				sg.log_sup.report_event_shadowed (
+						fcmain.mainshock_event_id,
+						shadow.getEventId(),
+						fcmain.mainshock_mag,
+						shadow.getMag(),
+						separation[0],
+						separation[1]);
 
 				// Write the new timeline entry
 
@@ -416,7 +438,7 @@ public class ExGenerateForecast extends ServerExecTask {
 
 				// Log the task
 
-				return RESCODE_FCAST_SHADOWED;
+				return RESCODE_FORECAST_SHADOWED;
 			}
 		}
 
@@ -496,13 +518,19 @@ public class ExGenerateForecast extends ServerExecTask {
 						+ "catalog_max_event_id = " + forecast_results.catalog_max_event_id + "\n"
 						+ "catalog_max_mag = " + forecast_results.catalog_max_mag);
 
+					sg.log_sup.report_event_foreshock (
+							fcmain.mainshock_event_id,
+							forecast_results.catalog_max_event_id,
+							fcmain.mainshock_mag,
+							forecast_results.catalog_max_mag);
+
 					// Write the new timeline entry
 
 					sg.timeline_sup.append_timeline (task, tstatus);
 
 					// Log the task
 
-					return RESCODE_FCAST_FORESHOCK;
+					return RESCODE_FORECAST_FORESHOCK;
 				}
 			
 //				// Set timeline to shadowed state
@@ -579,6 +607,8 @@ public class ExGenerateForecast extends ServerExecTask {
 
 				catch (Exception e) {
 
+					sg.log_sup.report_pdl_send_exception (tstatus, e);
+
 					// Get time of PDL retry
 
 					tstatus.set_pdl_status (TimelineStatus.PDLSTAT_PENDING);	// in case it was changed in the try block
@@ -594,6 +624,10 @@ public class ExGenerateForecast extends ServerExecTask {
 							+ "last_forecast_lag = " + tstatus.last_forecast_lag + "\n"
 							+ "Stack trace:\n" + SimpleUtils.getStackTraceAsString(e));
 					}
+				}
+
+				if (tstatus.is_pdl_send_successful()) {
+					sg.log_sup.report_pdl_send_ok (tstatus);
 				}
 			}
 		}

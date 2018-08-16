@@ -279,6 +279,11 @@ public class AftershockStatsShadow {
 	//    a W&C radius of 200 km, and so limits the combined call to a radius of 600 km.
 	//    This mechanism avoids the possiblity that the combined call might attempt to
 	//    retrieve all small earthquakes over a very large area.  Set to 10.0 to disable.
+	//  separation = A 2-element array that is used to return the separation between
+	//    the mainshock and the shadowing event.  If the mainshock is shadowed, then
+	//    separation[0] receives the separation in kilometers, and separation[1] receives
+	//    the separation in days (positive means the mainshock occurs after the shadowing
+	//    event).  Can be null if separation is not required.
 	// Returns:
 	// If the mainshock is not shadowed, then the return value is null.
 	// If the mainshock is shadowed, then the return value is the shadowing earthquake.
@@ -288,7 +293,8 @@ public class AftershockStatsShadow {
 
 	public static ObsEqkRupture find_shadow (ObsEqkRupture mainshock, long time_now,
 					double search_radius, long search_time_lo, long search_time_hi,
-					long centroid_rel_time_lo, long centroid_rel_time_hi, double centroid_mag_floor, double large_mag) {
+					long centroid_rel_time_lo, long centroid_rel_time_hi,
+					double centroid_mag_floor, double large_mag, double[] separation) {
 
 		// Parameter validation
 
@@ -321,6 +327,12 @@ public class AftershockStatsShadow {
 			throw new IllegalArgumentException ("AftershockStatsShadow.find_shadow: Invalid search radius"
 				+ ": search_radius = " + search_radius
 			);
+		}
+
+		if (separation != null) {
+			if (separation.length < 2) {
+				throw new IllegalArgumentException ("AftershockStatsShadow.find_shadow: Separation array is too short");
+			}
 		}
 
 		// List of candidate shadowing earthquakes
@@ -588,6 +600,11 @@ public class AftershockStatsShadow {
 		double best_distance = LocationUtils.horzDistance (mainshock_hypo, best_candidate.candidate_hypo);
 		double best_time_offset = ((double)(mainshock_time - best_candidate.candidate_time))/ComcatAccessor.day_millis;
 
+		if (separation != null) {
+			separation[0] = best_distance;
+			separation[1] = best_time_offset;
+		}
+
 		System.out.println ("AftershockStatsShadow.find_shadow: Mainshock " + mainshock_event_id + " is shadowed by event " + best_candidate.candidate_event_id);
 		System.out.println (String.format ("AftershockStatsShadow.find_shadow: Mainshock magnitude = %.2f, shadowing event magnitude = %.2f", mainshock_mag, best_candidate.candidate_mag));
 		System.out.println (String.format ("AftershockStatsShadow.find_shadow: Distance = %.3f km, time offset = %.3f days", best_distance, best_time_offset));
@@ -687,6 +704,7 @@ public class AftershockStatsShadow {
 				long centroid_rel_time_hi = YEAR_IN_MILLIS;
 				double centroid_mag_floor = DEF_CENTROID_MAG_FLOOR;
 				double large_mag = DEF_LARGE_MAG;
+				double[] separation = new double[2];
 
 				System.out.println ("");
 				System.out.println ("find_shadow parameters:");
@@ -706,7 +724,8 @@ public class AftershockStatsShadow {
 
 				ObsEqkRupture shadow = find_shadow (rup, time_now,
 					search_radius, search_time_lo, search_time_hi,
-					centroid_rel_time_lo, centroid_rel_time_hi, centroid_mag_floor, large_mag);
+					centroid_rel_time_lo, centroid_rel_time_hi,
+					centroid_mag_floor, large_mag, separation);
 
 				// Display results
 
@@ -731,6 +750,9 @@ public class AftershockStatsShadow {
 					System.out.println ("shadow_lat = " + shadow_lat);
 					System.out.println ("shadow_lon = " + shadow_lon);
 					System.out.println ("shadow_depth = " + shadow_depth);
+
+					System.out.println ("separation_km = " + separation[0]);
+					System.out.println ("separation_days = " + separation[1]);
 				}
 
             } catch (Exception e) {

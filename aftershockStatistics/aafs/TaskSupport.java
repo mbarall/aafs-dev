@@ -36,6 +36,8 @@ public class TaskSupport extends ServerComponent {
 		String trace = SimpleUtils.getStackTraceAsString(e);
 		sg.task_disp.display_taskinfo (trace + "\nInvalid task: " + task.toString() + "\nDump:\n" + task.dump_details());
 
+		sg.log_sup.report_invalid_task_exception (task, e);
+
 		// Insert the stack trace into the log remark
 
 		sg.task_disp.set_taskres_log (trace);

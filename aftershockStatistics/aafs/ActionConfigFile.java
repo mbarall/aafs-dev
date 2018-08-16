@@ -31,6 +31,7 @@ import scratch.aftershockStatistics.OAFParameterSet;
  *	"comcat_clock_skew" = Assumed maximum difference between our clock and ComCat clock, in java.time.Duration format.
  *	"comcat_origin_skew" = Assumed maximum change in mainshock origin time, in java.time.Duration format.
  *	"comcat_retry_min_gap" = String giving minimum allowed gap between ComCat retries, in java.time.Duration format.
+ *	"comcat_retry_missing" = String giving minimum ComCat retry lag for missing events, in java.time.Duration format.
  *  "seq_spec_min_lag" = String giving minimum time lag at which sequence-specific forecasts can be generated, in java.time.Duration format.
  *  "advisory_dur_week" = String giving minimum time lag at which one-week advisories can be generated, in java.time.Duration format.
  *  "advisory_dur_month" = String giving minimum time lag at which one-month advisories can be generated, in java.time.Duration format.
@@ -48,6 +49,8 @@ import scratch.aftershockStatistics.OAFParameterSet;
  *  "poll_long_period" = String giving period for the long polling cycle, in java.time.Duration format.
  *  "poll_long_lookback" = String giving lookback time for the long polling cycle, in java.time.Duration format.
  *  "poll_long_intake_gap" = String giving time gap between intake actions for the long polling cycle, in java.time.Duration format.
+ *  "pdl_intake_max_age" = String giving maximum allowed age for PDL intake, in java.time.Duration format.
+ *  "pdl_intake_max_future" = String giving maximum allowed time in future for PDL intake, in java.time.Duration format.
  *	"forecast_lags" = [ Array giving a list of time lags at which forecasts are generated, in increasing order.
  *		element = String giving time lag since mainshock, in java.time.Duration format.
  *	]
@@ -94,6 +97,11 @@ public class ActionConfigFile {
 	// Must be a whole number of seconds, between 1 and 10^9 seconds.
 
 	public long comcat_retry_min_gap;
+
+	// Minimum ComCat retry lag for missing events, in milliseconds.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long comcat_retry_missing;
 
 	// Minimum time after an earthquake at which sequence-specific forecasts can be generated, in milliseconds.
 	// Must be a whole number of seconds, between 1 and 10^9 seconds.
@@ -185,6 +193,16 @@ public class ActionConfigFile {
 
 	public long poll_long_intake_gap;
 
+	// Maximum allowed age for PDL intake.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long pdl_intake_max_age;
+
+	// Maximum allowed time in future for PDL intake.
+	// Must be a whole number of seconds, between 1 and 10^9 seconds.
+
+	public long pdl_intake_max_future;
+
 	// Time lags at which forecasts are generated, in milliseconds.  Must be in increasing order.
 	// This is time lag since the mainshock.  Must have at least 1 element.
 	// The difference between successive elements must be at least the minimum gap.
@@ -234,6 +252,7 @@ public class ActionConfigFile {
 		comcat_clock_skew = 0L;
 		comcat_origin_skew = 0L;
 		comcat_retry_min_gap = 0L;
+		comcat_retry_missing = 0L;
 		seq_spec_min_lag = 0L;
 		advisory_dur_week = 0L;
 		advisory_dur_month = 0L;
@@ -251,6 +270,8 @@ public class ActionConfigFile {
 		poll_long_period = 0L;
 		poll_long_lookback = 0L;
 		poll_long_intake_gap = 0L;
+		pdl_intake_max_age = 0L;
+		pdl_intake_max_future = 0L;
 		forecast_lags = new ArrayList<Long>();
 		comcat_retry_lags = new ArrayList<Long>();
 		comcat_intake_lags = new ArrayList<Long>();
@@ -295,6 +316,10 @@ public class ActionConfigFile {
 
 		if (!( is_valid_lag(comcat_retry_min_gap) )) {
 			throw new RuntimeException("ActionConfigFile: Invalid comcat_retry_min_gap: " + comcat_retry_min_gap);
+		}
+
+		if (!( is_valid_lag(comcat_retry_missing) )) {
+			throw new RuntimeException("ActionConfigFile: Invalid comcat_retry_missing: " + comcat_retry_missing);
 		}
 
 		if (!( is_valid_lag(seq_spec_min_lag) )) {
@@ -355,6 +380,14 @@ public class ActionConfigFile {
 
 		if (!( is_valid_lag(poll_long_intake_gap) )) {
 			throw new RuntimeException("ActionConfigFile: Invalid poll_long_intake_gap: " + poll_long_intake_gap);
+		}
+
+		if (!( is_valid_lag(pdl_intake_max_age) )) {
+			throw new RuntimeException("ActionConfigFile: Invalid pdl_intake_max_age: " + pdl_intake_max_age);
+		}
+
+		if (!( is_valid_lag(pdl_intake_max_future) )) {
+			throw new RuntimeException("ActionConfigFile: Invalid pdl_intake_max_future: " + pdl_intake_max_future);
 		}
 
 		int n = forecast_lags.size();
@@ -420,6 +453,7 @@ public class ActionConfigFile {
 		result.append ("comcat_clock_skew = " + Duration.ofMillis(comcat_clock_skew).toString() + "\n");
 		result.append ("comcat_origin_skew = " + Duration.ofMillis(comcat_origin_skew).toString() + "\n");
 		result.append ("comcat_retry_min_gap = " + Duration.ofMillis(comcat_retry_min_gap).toString() + "\n");
+		result.append ("comcat_retry_missing = " + Duration.ofMillis(comcat_retry_missing).toString() + "\n");
 		result.append ("seq_spec_min_lag = " + Duration.ofMillis(seq_spec_min_lag).toString() + "\n");
 		result.append ("advisory_dur_week = " + Duration.ofMillis(advisory_dur_week).toString() + "\n");
 		result.append ("advisory_dur_month = " + Duration.ofMillis(advisory_dur_month).toString() + "\n");
@@ -437,6 +471,8 @@ public class ActionConfigFile {
 		result.append ("poll_long_period = " + Duration.ofMillis(poll_long_period).toString() + "\n");
 		result.append ("poll_long_lookback = " + Duration.ofMillis(poll_long_lookback).toString() + "\n");
 		result.append ("poll_long_intake_gap = " + Duration.ofMillis(poll_long_intake_gap).toString() + "\n");
+		result.append ("pdl_intake_max_age = " + Duration.ofMillis(pdl_intake_max_age).toString() + "\n");
+		result.append ("pdl_intake_max_future = " + Duration.ofMillis(pdl_intake_max_future).toString() + "\n");
 
 		result.append ("forecast_lags = [" + "\n");
 		for (int i = 0; i < forecast_lags.size(); ++i) {
@@ -878,6 +914,7 @@ public class ActionConfigFile {
 		marshal_duration           (writer, "comcat_clock_skew"    , comcat_clock_skew    );
 		marshal_duration           (writer, "comcat_origin_skew"   , comcat_origin_skew   );
 		marshal_duration           (writer, "comcat_retry_min_gap" , comcat_retry_min_gap );
+		marshal_duration           (writer, "comcat_retry_missing" , comcat_retry_missing );
 		marshal_duration           (writer, "seq_spec_min_lag"     , seq_spec_min_lag     );
 		marshal_duration           (writer, "advisory_dur_week"    , advisory_dur_week    );
 		marshal_duration           (writer, "advisory_dur_month"   , advisory_dur_month   );
@@ -896,6 +933,8 @@ public class ActionConfigFile {
 		marshal_duration           (writer, "poll_long_period"     , poll_long_period     );
 		marshal_duration           (writer, "poll_long_lookback"   , poll_long_lookback   );
 		marshal_duration           (writer, "poll_long_intake_gap" , poll_long_intake_gap );
+		marshal_duration           (writer, "pdl_intake_max_age"   , pdl_intake_max_age   );
+		marshal_duration           (writer, "pdl_intake_max_future", pdl_intake_max_future);
 
 		marshal_duration_list      (writer, "forecast_lags"        , forecast_lags        );
 		marshal_duration_list      (writer, "comcat_retry_lags"    , comcat_retry_lags    );
@@ -921,6 +960,7 @@ public class ActionConfigFile {
 		comcat_clock_skew     = unmarshal_duration           (reader, "comcat_clock_skew"    );
 		comcat_origin_skew    = unmarshal_duration           (reader, "comcat_origin_skew"   );
 		comcat_retry_min_gap  = unmarshal_duration           (reader, "comcat_retry_min_gap" );
+		comcat_retry_missing  = unmarshal_duration           (reader, "comcat_retry_missing" );
 		seq_spec_min_lag      = unmarshal_duration           (reader, "seq_spec_min_lag"     );
 		advisory_dur_week     = unmarshal_duration           (reader, "advisory_dur_week"    );
 		advisory_dur_month    = unmarshal_duration           (reader, "advisory_dur_month"   );
@@ -939,6 +979,8 @@ public class ActionConfigFile {
 		poll_long_period      = unmarshal_duration           (reader, "poll_long_period"     );
 		poll_long_lookback    = unmarshal_duration           (reader, "poll_long_lookback"   );
 		poll_long_intake_gap  = unmarshal_duration           (reader, "poll_long_intake_gap" );
+		pdl_intake_max_age    = unmarshal_duration           (reader, "pdl_intake_max_age"   );
+		pdl_intake_max_future = unmarshal_duration           (reader, "pdl_intake_max_future");
 
 		forecast_lags         = unmarshal_duration_list      (reader, "forecast_lags"        );
 		comcat_retry_lags     = unmarshal_duration_list      (reader, "comcat_retry_lags"    );

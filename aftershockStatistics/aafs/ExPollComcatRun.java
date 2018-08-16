@@ -87,7 +87,7 @@ public class ExPollComcatRun extends ServerExecTask {
 			sg.task_disp.set_taskres_stage (sg.task_disp.get_time()
 								+ sg.task_disp.get_action_config().get_poll_short_period(),
 								task.get_stage());
-			return RESCODE_STAGE;
+			return RESCODE_STAGE_TOO_SOON;
 		}
 
 		// Get lookback depending on whether it is a short or long poll
@@ -145,7 +145,7 @@ public class ExPollComcatRun extends ServerExecTask {
 			sg.task_disp.set_taskres_stage (sg.task_disp.get_time()
 								+ sg.task_disp.get_action_config().get_poll_short_period(),
 								task.get_stage());
-			return RESCODE_STAGE;
+			return RESCODE_STAGE_COMCAT_RETRY;
 		}
 
 		double poll_lookback_days = ((double)poll_lookback) / ((double)DURATION_DAY);
@@ -298,6 +298,8 @@ public class ExPollComcatRun extends ServerExecTask {
 		System.out.println ("TASK-INFO: Comcat poll found " + count_no_timeline + " potential events with no corresponding timeline");
 		System.out.println ("TASK-INFO: Comcat poll found " + count_withdrawn_timeline + " potential events with a withdrawn timeline");
 
+		sg.log_sup.report_comcat_poll_done (poll_lookback, count_no_timeline, count_withdrawn_timeline);
+
 		//--- Final steps
 
 		// Update the poll timers
@@ -308,12 +310,12 @@ public class ExPollComcatRun extends ServerExecTask {
 
 		sg.task_disp.set_taskres_stage (sg.poll_sup.get_next_poll_time(),
 							task.get_stage());
-		return RESCODE_STAGE;
+		return RESCODE_STAGE_REPEATING_TASK;
 
 		//sg.task_disp.set_taskres_stage (sg.task_disp.get_time()
 		//					+ sg.task_disp.get_action_config().get_poll_short_period(),
 		//					task.get_stage());
-		//return RESCODE_STAGE;
+		//return RESCODE_STAGE_REPEATING_TASK;
 	}
 
 

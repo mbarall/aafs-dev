@@ -572,6 +572,27 @@ public class TimelineStatus extends DBPayload {
 		return false;
 	}
 
+	// Return true if this timeline has a result that includes a shadowing event.
+
+	public boolean result_has_shadowing () {
+		switch (fc_result) {
+		case FCRES_SKIPPED_SHADOWED:
+		case FCRES_SKIPPED_FORESHOCK:
+			return true;
+		}
+		return false;
+	}
+
+	// Return true if this timeline has a PDL status that includes a successful send.
+
+	public boolean is_pdl_send_successful () {
+		switch (pdl_status) {
+		case PDLSTAT_SUCCESS:
+			return true;
+		}
+		return false;
+	}
+
 
 
 

@@ -473,4 +473,24 @@ public class TimeSplitOutputStream extends FilterOutputStream {
 		return tsop.add_auto_upstream (upstream);
 	}
 
+
+
+	// Test if a filename pattern is valid.
+	// Note: This is a basic test examining only the text of the pattern,
+	// to see if it acceptable to SimpleDateFormat.
+	// It cannot determine if files can actually be created.
+
+	public static boolean is_valid_pattern (String the_filename_pattern) {
+		if (the_filename_pattern == null || the_filename_pattern.isEmpty()) {
+			return false;
+		}
+		try {
+			SimpleDateFormat the_fmt = new SimpleDateFormat (the_filename_pattern);
+			the_fmt.setTimeZone (TimeZone.getTimeZone ("UTC"));
+		} catch (Exception e) {
+			return false;
+		}
+		return true;
+	}
+
 }
