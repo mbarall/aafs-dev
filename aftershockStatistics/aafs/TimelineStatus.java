@@ -706,13 +706,17 @@ public class TimelineStatus extends DBPayload {
 	// Set the state to withdrawn.
 	//
 	// Note: analyst_options.extra_forecast_lag is set to -1L, consuming any analyst forecast request.
+	//
+	// Note: the_forecast_mainshock can be null, in which case the previous values are kept.
 
 	public void set_state_withdrawn (long the_entry_time, ForecastMainshock the_forecast_mainshock) {
 
 		//event_id            = kept;
 		actcode             = ACTCODE_WITHDRAWN;
 		action_time         = action_time + 1L;
-		comcat_ids          = the_forecast_mainshock.mainshock_id_list;
+		if (the_forecast_mainshock != null) {
+			comcat_ids          = the_forecast_mainshock.mainshock_id_list;
+		}
 
 		entry_time          = the_entry_time;
 		//fc_origin           = kept;
@@ -723,7 +727,9 @@ public class TimelineStatus extends DBPayload {
 
 		//analyst_options     = kept;
 
-		forecast_mainshock  = the_forecast_mainshock;
+		if (the_forecast_mainshock != null) {
+			forecast_mainshock  = the_forecast_mainshock;
+		}
 		forecast_params     = null;
 		forecast_results    = null;
 

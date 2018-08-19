@@ -306,7 +306,7 @@ public class TimelineSupport extends ServerComponent {
 	// Process an exception caused by a ComCat failure.
 	// Display a message, set the log remark, set the timeline to ComCat fail state, and write the timeline entry.
 
-	public void process_timeline_comcat_fail (PendingTask task, TimelineStatus tstatus, Exception e) {
+	private void process_timeline_comcat_fail (PendingTask task, TimelineStatus tstatus, Exception e) {
 
 		// Display messages
 			
@@ -330,12 +330,40 @@ public class TimelineSupport extends ServerComponent {
 
 
 
+	// Process an exception caused by an event removed from ComCat.
+	// Display a message, set the log remark, set the timeline to withdrawn state, and write the timeline entry.
+
+	private void process_timeline_comcat_removed (PendingTask task, TimelineStatus tstatus, Exception e) {
+
+		// Display messages
+			
+		sg.log_sup.report_comcat_exception (task.get_event_id(), e);
+		
+		sg.task_disp.set_display_taskres_log ("TASK-INFO: Timeline stopped due to event deleted or merged in ComCat:\n"
+			+ "opcode = " + get_opcode_as_string (task.get_opcode()) + "\n"
+			+ "event_id = " + task.get_event_id() + "\n"
+			+ "Stack trace:\n" + SimpleUtils.getStackTraceAsString(e));
+
+		// Withdraw the timeline
+
+		tstatus.set_state_withdrawn (sg.task_disp.get_time(), null);
+
+		// Write timeline entry
+
+		append_timeline (task, tstatus);
+		return;
+	}
+
+
+
+
 	// Process a retry caused by a ComCat failure.
 	// Stage the task to retry the Comcat operation.
 	// If retries are exhausted, then fail the operation.
 	// Return values:
 	//  RESCODE_STAGE_COMCAT_RETRY = The task is being staged for retry.
 	//  RESCODE_TIMELINE_COMCAT_FAIL = Retries exhausted, the timeline is stopped in Comcat fail state.
+	//  RESCODE_TIMELINE_EVENT_REMOVED = Retries exhausted, event deleted or merged in Comcat, timeline is in withdrawn state.
 
 	public int process_timeline_comcat_retry (PendingTask task, TimelineStatus tstatus, Exception e) {
 
@@ -363,6 +391,11 @@ public class TimelineSupport extends ServerComponent {
 		}
 
 		// Retries exhausted, process the error and log the task
+
+		if (e instanceof ComcatRemovedException) {
+			process_timeline_comcat_removed (task, tstatus, e);
+			return RESCODE_TIMELINE_EVENT_REMOVED;
+		}
 
 		process_timeline_comcat_fail (task, tstatus, e);
 		return RESCODE_TIMELINE_COMCAT_FAIL;

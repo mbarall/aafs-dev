@@ -86,7 +86,7 @@ public class ServerComponent {
 	public static final int RESCODE_TIMELINE_NOT_ACTIVE = 5;		// Timeline entry not active, task discarded
 	public static final int RESCODE_TIMELINE_TASK_MISMATCH = 6;		// Timeline entry has lag values that do not match the forecast task
 	public static final int RESCODE_TIMELINE_COMCAT_FAIL = 7;		// Timeline stopped due to ComCat failure
-	public static final int RESCODE_TIMELINE_WITHDRAW = 8;			// Timeline stopped due to withdrawal of event at first forecast
+	public static final int RESCODE_TIMELINE_WITHDRAW = 8;			// Timeline stopped due to event not passing intake filter
 	public static final int RESCODE_TIMELINE_FORESHOCK = 9;			// Timeline stopped because event was found to be a foreshock
 	public static final int RESCODE_TIMELINE_NOT_PDL_PEND = 10;		// Timeline entry does not have a PDL report pending, task discarded
 	public static final int RESCODE_TIMELINE_PDL_FAIL = 11;			// Timeline attempt to send PDL report failed, sending abandoned
@@ -108,7 +108,8 @@ public class ServerComponent {
 	public static final int RESCODE_FORECAST_SHADOWED = 27;			// Forecast skipped because the event is shadowed
 	public static final int RESCODE_FORECAST_FORESHOCK = 28;		// Forecast skipped because event was found to be a foreshock
 	public static final int RESCODE_INTAKE_AGED = 29;				// Event intake dropped because event was outside age range
-	public static final int RESCODE_MAX_NORMAL = 29;				// Maximum known normal result code
+	public static final int RESCODE_TIMELINE_EVENT_REMOVED = 30;	// Timeline stopped due to event removed or merged in Comcat
+	public static final int RESCODE_MAX_NORMAL = 30;				// Maximum known normal result code
 
 	public static final int RESCODE_DELETE = 101;					// Delete current task (without logging it)
 	public static final int RESCODE_DELETE_TIMELINE_EXISTS = 102;	// Delete current task (without logging it), because timeline already exists
@@ -160,6 +161,7 @@ public class ServerComponent {
 		case RESCODE_FORECAST_SHADOWED: return "RESCODE_FORECAST_SHADOWED";
 		case RESCODE_FORECAST_FORESHOCK: return "RESCODE_FORECAST_FORESHOCK";
 		case RESCODE_INTAKE_AGED: return "RESCODE_INTAKE_AGED";
+		case RESCODE_TIMELINE_EVENT_REMOVED: return "RESCODE_TIMELINE_EVENT_REMOVED";
 
 		case RESCODE_DELETE: return "RESCODE_DELETE";
 		case RESCODE_DELETE_TIMELINE_EXISTS: return "RESCODE_DELETE_TIMELINE_EXISTS";

@@ -284,6 +284,12 @@ public class ActionConfig {
 		return param_set.pdl_intake_max_future;
 	}
 
+	// Get default value of injectable text for PDL JSON files, or "" for none.
+
+	public String get_def_injectable_text () {
+		return param_set.def_injectable_text;
+	}
+
 	// Get the first element of forecast_lags that is >= the supplied min_lag.
 	// The return is -1 if the supplied min_lag is greater than all elements.
 	// If a value is found, it is guaranteed to be a whole number of seconds, from 1 to 10^9 seconds.

@@ -66,6 +66,10 @@ public class ForecastResults {
 
 	public long advisory_lag = ADVISORY_LAG_WEEK;
 
+	// Injectable text for PDL JSON files, or "" for none.
+
+	public String injectable_text = "";
+
 
 	//----- Catalog results -----
 
@@ -281,6 +285,12 @@ public class ForecastResults {
 				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_DAY);
 			}
 
+			String the_injectable_text = injectable_text;
+			if (the_injectable_text.length() == 0) {
+				the_injectable_text = null;		// convention for USGS_AftershockForecast
+			}
+			forecast.setInjectableText (the_injectable_text);
+
 			// Get the JSON String
 
 			JSONObject json = forecast.buildJSON(result_time);
@@ -412,6 +422,12 @@ public class ForecastResults {
 			} else {
 				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_DAY);
 			}
+
+			String the_injectable_text = injectable_text;
+			if (the_injectable_text.length() == 0) {
+				the_injectable_text = null;		// convention for USGS_AftershockForecast
+			}
+			forecast.setInjectableText (the_injectable_text);
 
 			// Get the JSON String
 
@@ -546,6 +562,12 @@ public class ForecastResults {
 				forecast.setAdvisoryDuration (USGS_AftershockForecast.Duration.ONE_DAY);
 			}
 
+			String the_injectable_text = injectable_text;
+			if (the_injectable_text.length() == 0) {
+				the_injectable_text = null;		// convention for USGS_AftershockForecast
+			}
+			forecast.setInjectableText (the_injectable_text);
+
 			// Get the JSON String
 
 			JSONObject json = forecast.buildJSON(result_time);
@@ -615,9 +637,10 @@ public class ForecastResults {
 	// Calculate all results.
 	// If f_seq_spec is false, then sequence specific results are not calculated.
 
-	public void calc_all (long the_result_time, long the_advisory_lag, ForecastMainshock fcmain, ForecastParameters params, boolean f_seq_spec) {
+	public void calc_all (long the_result_time, long the_advisory_lag, String the_injectable_text, ForecastMainshock fcmain, ForecastParameters params, boolean f_seq_spec) {
 		result_time = the_result_time;
 		advisory_lag = the_advisory_lag;
+		injectable_text = ((the_injectable_text == null) ? "" : the_injectable_text);
 		calc_catalog_results (fcmain, params);
 		calc_generic_results (fcmain, params);
 		calc_seq_spec_results (fcmain, params, f_seq_spec);
@@ -696,6 +719,7 @@ public class ForecastResults {
 
 		result.append ("result_time = " + result_time + "\n");
 		result.append ("advisory_lag = " + advisory_lag + "\n");
+		result.append ("injectable_text = " + injectable_text + "\n");
 
 		result.append ("catalog_result_avail = " + catalog_result_avail + "\n");
 		if (catalog_result_avail) {
@@ -769,8 +793,9 @@ public class ForecastResults {
 
 		// Contents
 
-		writer.marshalLong   ("result_time", result_time);
-		writer.marshalLong   ("advisory_lag", advisory_lag);
+		writer.marshalLong   ("result_time"    , result_time    );
+		writer.marshalLong   ("advisory_lag"   , advisory_lag   );
+		writer.marshalString ("injectable_text", injectable_text);
 
 		writer.marshalBoolean ("catalog_result_avail", catalog_result_avail);
 		if (catalog_result_avail) {
@@ -815,8 +840,9 @@ public class ForecastResults {
 
 		// Contents
 
-		result_time = reader.unmarshalLong   ("result_time");
-		advisory_lag = reader.unmarshalLong   ("advisory_lag");
+		result_time     = reader.unmarshalLong   ("result_time"    );
+		advisory_lag    = reader.unmarshalLong   ("advisory_lag"   );
+		injectable_text = reader.unmarshalString ("injectable_text");
 
 		catalog_result_avail = reader.unmarshalBoolean ("catalog_result_avail");
 		if (catalog_result_avail) {
@@ -987,7 +1013,7 @@ public class ForecastResults {
 			// Get results
 
 			ForecastResults results = new ForecastResults();
-			results.calc_all (fcmain.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, fcmain, params, true);
+			results.calc_all (fcmain.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, "test1 injectable.", fcmain, params, true);
 
 			// Display them
 
@@ -999,7 +1025,7 @@ public class ForecastResults {
 
 		// Subcommand : Test #2
 		// Command format:
-		//  test1  event_id
+		//  test2  event_id
 		// Get parameters for the event, and display them.
 		// Then get results for the event, and display them.
 		// Then marshal to JSON, and display the JSON.
@@ -1042,7 +1068,7 @@ public class ForecastResults {
 			// Get results
 
 			ForecastResults results = new ForecastResults();
-			results.calc_all (fcmain.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, fcmain, params, true);
+			results.calc_all (fcmain.mainshock_time + the_forecast_lag, ADVISORY_LAG_WEEK, "", fcmain, params, true);
 
 			// Display them
 

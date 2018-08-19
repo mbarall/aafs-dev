@@ -282,7 +282,7 @@ public class ExGenerateForecast extends ServerExecTask {
 		
 					sg.task_disp.set_display_taskres_log ("TASK-INFO: Timeline entry withdrawn:\n"
 						+ "timeline_id = " + tstatus.event_id + "\n"
-						+ "event_id = " + task.get_event_id() + "\n"
+						+ "fcmain.mainshock_event_id = " + fcmain.mainshock_event_id + "\n"
 						+ "fcmain.mainshock_lat = " + fcmain.mainshock_lat + "\n"
 						+ "fcmain.mainshock_lon = " + fcmain.mainshock_lon + "\n"
 						+ "fcmain.mainshock_mag = " + fcmain.mainshock_mag);
@@ -315,10 +315,10 @@ public class ExGenerateForecast extends ServerExecTask {
 
 				sg.task_disp.set_display_taskres_log ("TASK-INFO: Blocked by intake filter:\n"
 					+ "timeline_id = " + tstatus.event_id + "\n"
-					+ "mainshock_event_id = " + fcmain.mainshock_event_id + "\n"
+					+ "fcmain.mainshock_event_id = " + fcmain.mainshock_event_id + "\n"
 					+ "fcmain.mainshock_lat = " + fcmain.mainshock_lat + "\n"
 					+ "fcmain.mainshock_lon = " + fcmain.mainshock_lon + "\n"
-					+ "mainshock_mag = " + fcmain.mainshock_mag);
+					+ "fcmain.mainshock_mag = " + fcmain.mainshock_mag);
 
 				// Write the new timeline entry
 
@@ -344,7 +344,8 @@ public class ExGenerateForecast extends ServerExecTask {
 //			if (intake_region == null) {
 //		
 //				sg.task_disp.set_display_taskres_log ("TASK-INFO: Timeline entry withdrawn:\n"
-//					+ "event_id = " + task.get_event_id() + "\n"
+//					+ "timeline_id = " + tstatus.event_id + "\n"
+//					+ "fcmain.mainshock_event_id = " + fcmain.mainshock_event_id + "\n"
 //					+ "fcmain.mainshock_lat = " + fcmain.mainshock_lat + "\n"
 //					+ "fcmain.mainshock_lon = " + fcmain.mainshock_lon + "\n"
 //					+ "fcmain.mainshock_mag = " + fcmain.mainshock_mag);
@@ -464,9 +465,13 @@ public class ExGenerateForecast extends ServerExecTask {
 				advisory_lag = ForecastResults.ADVISORY_LAG_DAY;
 			}
 
+			String the_injectable_text = forecast_params.get_eff_injectable_text (
+					sg.task_disp.get_action_config().get_def_injectable_text());
+
 			forecast_results.calc_all (
 				fcmain.mainshock_time + next_forecast_lag,
 				advisory_lag,
+				the_injectable_text,
 				fcmain,
 				forecast_params,
 				next_forecast_lag >= sg.task_disp.get_action_config().get_seq_spec_min_lag());

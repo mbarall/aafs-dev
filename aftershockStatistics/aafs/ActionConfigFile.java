@@ -50,7 +50,8 @@ import scratch.aftershockStatistics.OAFParameterSet;
  *  "poll_long_lookback" = String giving lookback time for the long polling cycle, in java.time.Duration format.
  *  "poll_long_intake_gap" = String giving time gap between intake actions for the long polling cycle, in java.time.Duration format.
  *  "pdl_intake_max_age" = String giving maximum allowed age for PDL intake, in java.time.Duration format.
- *  "pdl_intake_max_future" = String giving maximum allowed time in future for PDL intake, in java.time.Duration format.
+ *  "pdl_intake_max_future" = String giving default value of injectable text for PDL JSON files, or "" for none.
+ *  "def_injectable_text" = String giving maximum allowed time in future for PDL intake, in java.time.Duration format.
  *	"forecast_lags" = [ Array giving a list of time lags at which forecasts are generated, in increasing order.
  *		element = String giving time lag since mainshock, in java.time.Duration format.
  *	]
@@ -203,6 +204,10 @@ public class ActionConfigFile {
 
 	public long pdl_intake_max_future;
 
+	// Default value of injectable text for PDL JSON files, or "" for none.
+
+	public String def_injectable_text;
+
 	// Time lags at which forecasts are generated, in milliseconds.  Must be in increasing order.
 	// This is time lag since the mainshock.  Must have at least 1 element.
 	// The difference between successive elements must be at least the minimum gap.
@@ -272,6 +277,7 @@ public class ActionConfigFile {
 		poll_long_intake_gap = 0L;
 		pdl_intake_max_age = 0L;
 		pdl_intake_max_future = 0L;
+		def_injectable_text = "";
 		forecast_lags = new ArrayList<Long>();
 		comcat_retry_lags = new ArrayList<Long>();
 		comcat_intake_lags = new ArrayList<Long>();
@@ -390,6 +396,10 @@ public class ActionConfigFile {
 			throw new RuntimeException("ActionConfigFile: Invalid pdl_intake_max_future: " + pdl_intake_max_future);
 		}
 
+		if (!( def_injectable_text != null )) {
+			throw new RuntimeException("ActionConfigFile: Invalid def_injectable_text: " + ((def_injectable_text == null) ? "null" : def_injectable_text));
+		}
+
 		int n = forecast_lags.size();
 		long min_lag = MIN_LAG;
 		
@@ -473,6 +483,7 @@ public class ActionConfigFile {
 		result.append ("poll_long_intake_gap = " + Duration.ofMillis(poll_long_intake_gap).toString() + "\n");
 		result.append ("pdl_intake_max_age = " + Duration.ofMillis(pdl_intake_max_age).toString() + "\n");
 		result.append ("pdl_intake_max_future = " + Duration.ofMillis(pdl_intake_max_future).toString() + "\n");
+		result.append ("def_injectable_text = " + ((def_injectable_text == null) ? "null" : def_injectable_text) + "\n");
 
 		result.append ("forecast_lags = [" + "\n");
 		for (int i = 0; i < forecast_lags.size(); ++i) {
@@ -935,6 +946,7 @@ public class ActionConfigFile {
 		marshal_duration           (writer, "poll_long_intake_gap" , poll_long_intake_gap );
 		marshal_duration           (writer, "pdl_intake_max_age"   , pdl_intake_max_age   );
 		marshal_duration           (writer, "pdl_intake_max_future", pdl_intake_max_future);
+		writer.marshalString       (        "def_injectable_text"  , def_injectable_text  );
 
 		marshal_duration_list      (writer, "forecast_lags"        , forecast_lags        );
 		marshal_duration_list      (writer, "comcat_retry_lags"    , comcat_retry_lags    );
@@ -981,6 +993,7 @@ public class ActionConfigFile {
 		poll_long_intake_gap  = unmarshal_duration           (reader, "poll_long_intake_gap" );
 		pdl_intake_max_age    = unmarshal_duration           (reader, "pdl_intake_max_age"   );
 		pdl_intake_max_future = unmarshal_duration           (reader, "pdl_intake_max_future");
+		def_injectable_text   = reader.unmarshalString       (        "def_injectable_text"  );
 
 		forecast_lags         = unmarshal_duration_list      (reader, "forecast_lags"        );
 		comcat_retry_lags     = unmarshal_duration_list      (reader, "comcat_retry_lags"    );

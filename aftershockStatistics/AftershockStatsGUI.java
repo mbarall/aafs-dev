@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
+import java.util.ArrayDeque;
 
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -51,7 +52,7 @@ import org.opensha.commons.data.xyz.EvenlyDiscrXYZ_DataSet;
 import org.opensha.commons.geo.Location;
 import org.opensha.commons.geo.LocationUtils;
 //import org.opensha.commons.geo.Region;
-import org.opensha.commons.gui.ConsoleWindow;
+//import org.opensha.commons.gui.ConsoleWindow;
 import org.opensha.commons.gui.plot.GraphWidget;
 import org.opensha.commons.gui.plot.PlotCurveCharacterstics;
 import org.opensha.commons.gui.plot.PlotElement;
@@ -104,6 +105,9 @@ import scratch.aftershockStatistics.pdl.PDLSender;
 
 import scratch.aftershockStatistics.util.SphLatLon;
 import scratch.aftershockStatistics.util.SphRegion;
+import scratch.aftershockStatistics.util.GUIConsoleWindow;
+import scratch.aftershockStatistics.util.GUICalcStep;
+import scratch.aftershockStatistics.util.GUICalcRunnable;
 
 import scratch.aftershockStatistics.aafs.ServerConfig;
 import scratch.aftershockStatistics.aafs.ServerConfigFile;
@@ -266,17 +270,17 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 		
 		eventIDParam = new StringParameter("USGS Event ID");
 		eventIDParam.setValue("us20002926");
-		eventIDParam.setInfo("Get IDs from http://earthquake.usgs.gov/earthquakes/");
+		eventIDParam.setInfo("Get IDs from https://earthquake.usgs.gov/earthquakes/");
 		eventIDParam.addParameterChangeListener(this);
 		dataParams.addParameter(eventIDParam);
 		
-		dataStartTimeParam = new DoubleParameter("Data Start Time", 0d, 3650, new Double(0d));
+		dataStartTimeParam = new DoubleParameter("Data Start Time", 0d, 36500d, new Double(0d));
 		dataStartTimeParam.setUnits("Days");
 		dataStartTimeParam.setInfo("Relative to main shock origin time");
 		dataStartTimeParam.addParameterChangeListener(this);
 		dataParams.addParameter(dataStartTimeParam);
 		
-		dataEndTimeParam = new DoubleParameter("Data End Time", 0d, 3650, new Double(7d));
+		dataEndTimeParam = new DoubleParameter("Data End Time", 0d, 36500d, new Double(7d));
 		dataEndTimeParam.setUnits("Days");
 		dataEndTimeParam.setInfo("Relative to main shock origin time");
 		dataEndTimeParam.addParameterChangeListener(this);
@@ -289,7 +293,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 		dataParams.addParameter(regionTypeParam);
 		
 		// these are inside region editor
-		radiusParam = new DoubleParameter("Radius", 0d, 1000, new Double(20));
+		radiusParam = new DoubleParameter("Radius", 0d, 20000d, new Double(20d));
 		radiusParam.setUnits("km");
 		minLatParam = new DoubleParameter("Min Lat", -90d, 90d, new Double(32d));
 		maxLatParam = new DoubleParameter("Max Lat", -90d, 90d, new Double(36d));
@@ -416,12 +420,12 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 		forecastStartTimeNowParam.addParameterChangeListener(this);
 		fitParams.addParameter(forecastStartTimeNowParam);
 		
-		forecastStartTimeParam = new DoubleParameter("Forecast Start Time", 0d, 3650, new Double(0d));
+		forecastStartTimeParam = new DoubleParameter("Forecast Start Time", 0d, 36500d, new Double(0d));
 		forecastStartTimeParam.setUnits("Days");
 		forecastStartTimeParam.addParameterChangeListener(this);
 		fitParams.addParameter(forecastStartTimeParam);
 		
-		forecastEndTimeParam = new DoubleParameter("Forecast End Time", 0d, 3650, new Double(7d));
+		forecastEndTimeParam = new DoubleParameter("Forecast End Time", 0d, 36500d, new Double(7d));
 		forecastEndTimeParam.setUnits("Days");
 		forecastEndTimeParam.addParameterChangeListener(this);
 		fitParams.addParameter(forecastEndTimeParam);
@@ -438,7 +442,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 		ParameterListEditor fitEditor = new ParameterListEditor(fitParams);
 		fitEditor.setTitle("Aftershock Parameters");
 		
-		ConsoleWindow console = new ConsoleWindow(true);
+		GUIConsoleWindow console = new GUIConsoleWindow(true);
 		consoleScroll = console.getScrollPane();
 		consoleScroll.setSize(600, 600);
 		JTextArea text = console.getTextArea();
@@ -466,7 +470,6 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
 		setTitle("Aftershock Statistics GUI");
 		setLocationRelativeTo(null);
-		setVisible(true);
 		
 		accessor = new ComcatAccessor();
 	}
@@ -649,6 +652,8 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 			e.printStackTrace();
 			genericParams = null;
 		}
+		// as a courtesy, spit out the decimal days remaining in the origin day
+		System.out.println("The mainshock occurred " + String.format("%.4f", getTimeRemainingInUTCDay()) + " days before midnight (UTC)\n");
 	}
 	
 	private Location getCentroid() {
@@ -1637,6 +1642,9 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 		private ButtonParameter injectableTextButton;
 		
 		private JFileChooser chooser;
+
+		private Product pdl_product;
+		private Exception pdl_exception;
 		
 		public ForecastTablePanel(USGS_AftershockForecast forecast) {
 			this.forecast = forecast;
@@ -1731,20 +1739,51 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 						JOptionPane.showMessageDialog(this, message, "Error building product", JOptionPane.ERROR_MESSAGE);
 					}
 					if (product != null) {
-						boolean isSent = false;
-						try {
-							//OAF_Publisher.sendProduct(product);
-							PDLSender.signProduct(product);
-							PDLSender.sendProduct(product, true);
-							isSent = true;
-						} catch (Exception e) {
-							e.printStackTrace();
-							String message = ClassUtils.getClassNameWithoutPackage(e.getClass())+": "+e.getMessage();
-							JOptionPane.showMessageDialog(this, message, "Error sending product", JOptionPane.ERROR_MESSAGE);
-						}
-						if (isSent) {
-							JOptionPane.showMessageDialog(this, "Success: Forecast has been successfully sent to PDL", "Publication succeeded", JOptionPane.INFORMATION_MESSAGE);
-						}
+
+						//  boolean isSent = false;
+						//  try {
+						//  	//OAF_Publisher.sendProduct(product);
+						//  	PDLSender.signProduct(product);
+						//  	PDLSender.sendProduct(product, true);
+						//  	isSent = true;
+						//  } catch (Exception e) {
+						//  	e.printStackTrace();
+						//  	String message = ClassUtils.getClassNameWithoutPackage(e.getClass())+": "+e.getMessage();
+						//  	JOptionPane.showMessageDialog(this, message, "Error sending product", JOptionPane.ERROR_MESSAGE);
+						//  }
+						//  if (isSent) {
+						//  	JOptionPane.showMessageDialog(this, "Success: Forecast has been successfully sent to PDL", "Publication succeeded", JOptionPane.INFORMATION_MESSAGE);
+						//  }
+
+						pdl_product = product;
+						pdl_exception = null;
+						GUICalcStep pdlSendStep = new GUICalcStep("Sending product to PDL", "...", new Runnable() {
+							@Override
+							public void run() {
+								try {
+									//OAF_Publisher.sendProduct(product);
+									PDLSender.signProduct(pdl_product);
+									PDLSender.sendProduct(pdl_product, true);
+								} catch (Exception e) {
+									pdl_exception = e;
+								}
+								SwingUtilities.invokeLater(new Runnable() {
+									@Override
+									public void run() {
+										if (pdl_exception == null) {
+										  	JOptionPane.showMessageDialog(ForecastTablePanel.this, "Success: Forecast has been successfully sent to PDL", "Publication succeeded", JOptionPane.INFORMATION_MESSAGE);
+										} else {
+											pdl_exception.printStackTrace();
+											String message = ClassUtils.getClassNameWithoutPackage(pdl_exception.getClass())+": "+pdl_exception.getMessage();
+											JOptionPane.showMessageDialog(ForecastTablePanel.this, message, "Error sending product", JOptionPane.ERROR_MESSAGE);
+										}
+									}
+								});
+							}
+						});
+						GUICalcRunnable run = new GUICalcRunnable(AftershockStatsGUI.this, pdlSendStep);
+						new Thread(run).start();
+
 					}
 				}
 			} else if (event.getParameter() == advisoryDurationParam) {
@@ -1793,43 +1832,185 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 		}
 		
 	}
+
+	public static class ProgressRunner implements Runnable {
+		private ProgressManager manager;
+		public ProgressRunner (ProgressManager the_manager) {
+			manager = the_manager;
+		}
+		@Override
+		public void run() {
+			manager.run();
+			return;
+		}
+	} 
+
+	public class ProgressManager {
+
+		// The progress bar.
+		private CalcProgressBar progress;
+
+		// The state: 0 = idle, 1 = init, 2 = update, 3 = dispose.
+		private int state;
+
+		public static final int STATE_IDLE = 0;
+		public static final int STATE_INIT = 1;
+		public static final int STATE_UPDATE = 2;
+		public static final int STATE_DISPOSE = 3;
+
+		// The title and message.
+		private String title;
+		private String message;
+
+		// Construct object in idle state.
+		public ProgressManager (CalcProgressBar the_progress) {
+			progress = the_progress;
+			state = STATE_IDLE;
+			title = null;
+			message = null;
+		}
+
+		// Request initialization.
+		public void req_init () {
+			synchronized (this) {
+				while (state != STATE_IDLE) {
+					try {
+						wait();
+					} catch (InterruptedException e) {}
+				}
+				state = STATE_INIT;
+			}
+			SwingUtilities.invokeLater(new ProgressRunner (this));
+			return;
+		}
+
+		// Request update.
+		public synchronized void req_update (String the_title, String the_message) {
+			synchronized (this) {
+				while (state != STATE_IDLE) {
+					try {
+						wait();
+					} catch (InterruptedException e) {}
+				}
+				state = STATE_UPDATE;
+				title = the_title;
+				message = the_message;
+			}
+			SwingUtilities.invokeLater(new ProgressRunner (this));
+			return;
+		}
+
+		// Request disposition.
+		public synchronized void req_dispose () {
+			synchronized (this) {
+				while (state != STATE_IDLE) {
+					try {
+						wait();
+					} catch (InterruptedException e) {}
+				}
+				state = STATE_DISPOSE;
+			}
+			SwingUtilities.invokeLater(new ProgressRunner (this));
+			synchronized (this) {
+				while (state != STATE_IDLE) {
+					try {
+						wait();
+					} catch (InterruptedException e) {}
+				}
+			}
+			return;
+		}
+
+		// Notify that the state is idle.
+		public void notify_idle () {
+			synchronized (this) {
+				state = STATE_IDLE;
+				notifyAll();
+			}
+			return;
+		}
+
+		// Run the next operation.
+		public void run () {
+			int my_state;
+			String my_title;
+			String my_message;
+			synchronized (this) {
+				my_state = state;
+				my_title = title;
+				my_message = message;
+			}
+
+			switch (my_state) {
+
+			case STATE_INIT:
+				//if (progress.isVisible()) {
+				//	progress.setVisible(false);
+				//}
+
+				// Throw away the passed-in progress bar and create a new one.
+				// If this is not done, then setVisible tends to throw exceptions.
+				// The reason is unclear.  Perhaps setVisible has to be called on
+				// the same thread used to construct the progress bar?
+				progress = new CalcProgressBar(AftershockStatsGUI.this, "", "", false);
+				progress.setIndeterminate(true);
+
+				progress.setModalityType(ModalityType.APPLICATION_MODAL);
+				notify_idle();
+				progress.setVisible(true);		// does not return until disposed or made not-visible
+				break;
+
+			case STATE_UPDATE:
+				progress.setTitle(my_title);
+				progress.setProgressMessage(my_message);
+				progress.pack();
+				notify_idle();
+				break;
+
+			case STATE_DISPOSE:
+				progress.setVisible(false);
+				progress.dispose();
+				notify_idle();
+				break;
+			}
+
+			return;
+		}
+	}
 	
 	private class CalcRunnable implements Runnable {
 		private CalcProgressBar progress;
 		private CalcStep[] steps;
 		
 		private String curTitle;
-		private Throwable exception;
+		private volatile Throwable exception;	// written from multiple threads
+
+		private ProgressManager progress_manager;
+		private boolean forceEDT = true;
 		
 		public CalcRunnable(CalcProgressBar progress, CalcStep... calcSteps) {
 			this.progress = progress;
 			this.steps = calcSteps;
+			progress_manager = new ProgressManager (progress);
+
+			//this.progress = new CalcProgressBar(AftershockStatsGUI.this, "", "", false);
+			//progress.setIndeterminate(true);
+
 		}
+
+		// This function runs in an application thread.
 
 		@Override
 		public void run() {
-			SwingUtilities.invokeLater(new Runnable() {
-				
-				@Override
-				public void run() {
-					if (progress.isVisible())
-						progress.setVisible(false);
-					progress.setModalityType(ModalityType.APPLICATION_MODAL);
-					progress.setVisible(true);
-				}
-			});
+
+			exception = null;
+			progress_manager.req_init();
+
 			for (final CalcStep step : steps) {
-				SwingUtilities.invokeLater(new Runnable() {
-					
-					@Override
-					public void run() {
-						progress.setTitle(step.title);
-						progress.setProgressMessage(step.progressMessage);
-						progress.pack();
-					}
-				});
+				progress_manager.req_update (step.title, step.progressMessage);
 				curTitle = step.title;
-				if (step.runInEDT) {
+
+				if (forceEDT || step.runInEDT) {
 					try {
 						SwingUtilities.invokeAndWait(new Runnable() {
 							
@@ -1845,25 +2026,20 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 					} catch (Exception e) {
 						exception = e;
 					}
-					if (exception != null)
-						break;
 				} else {
 					try {
 						step.run.run();
 					} catch (Throwable e) {
 						exception = e;
-						break;
 					}
 				}
-			}
-			SwingUtilities.invokeLater(new Runnable() {
-				
-				@Override
-				public void run() {
-					progress.setVisible(false);
-					progress.dispose();
+				if (exception != null) {
+					break;
 				}
-			});
+			}
+
+			progress_manager.req_dispose();
+
 			if (exception != null) {
 				final String title = "Error "+curTitle;
 				exception.printStackTrace();
@@ -1880,13 +2056,119 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 					System.err.println("Error displaying error message!");
 					e.printStackTrace();
 				}
-				
 			}
+
+			return;
 		}
 	}
 
+
+
+
+//	// Old version without thread synchronization.
+
+//	private class CalcRunnable implements Runnable {
+//		private CalcProgressBar progress;
+//		private CalcStep[] steps;
+//		
+//		private String curTitle;
+//		private Throwable exception;
+//		
+//		public CalcRunnable(CalcProgressBar progress, CalcStep... calcSteps) {
+//			this.progress = progress;
+//			this.steps = calcSteps;
+//		}
+//
+//		@Override
+//		public void run() {
+//			SwingUtilities.invokeLater(new Runnable() {
+//				
+//				@Override
+//				public void run() {
+//					if (progress.isVisible())
+//						progress.setVisible(false);
+//					progress.setModalityType(ModalityType.APPLICATION_MODAL);
+//					progress.setVisible(true);
+//				}
+//			});
+//			for (final CalcStep step : steps) {
+//				SwingUtilities.invokeLater(new Runnable() {
+//					
+//					@Override
+//					public void run() {
+//						progress.setTitle(step.title);
+//						progress.setProgressMessage(step.progressMessage);
+//						progress.pack();
+//					}
+//				});
+//				curTitle = step.title;
+//				if (step.runInEDT) {
+//					try {
+//						SwingUtilities.invokeAndWait(new Runnable() {
+//							
+//							@Override
+//							public void run() {
+//								try {
+//									step.run.run();
+//								} catch (Throwable e) {
+//									exception = e;
+//								}
+//							}
+//						});
+//					} catch (Exception e) {
+//						exception = e;
+//					}
+//					if (exception != null)
+//						break;
+//				} else {
+//					try {
+//						step.run.run();
+//					} catch (Throwable e) {
+//						exception = e;
+//						break;
+//					}
+//				}
+//			}
+//			SwingUtilities.invokeLater(new Runnable() {
+//				
+//				@Override
+//				public void run() {
+//					progress.setVisible(false);
+//					progress.dispose();
+//				}
+//			});
+//			if (exception != null) {
+//				final String title = "Error "+curTitle;
+//				exception.printStackTrace();
+//				final String message = exception.getMessage();
+//				try {
+//					SwingUtilities.invokeAndWait(new Runnable() {
+//						
+//						@Override
+//						public void run() {
+//							JOptionPane.showMessageDialog(null, message, title, JOptionPane.ERROR_MESSAGE);
+//						}
+//					});
+//				} catch (Exception e) {
+//					System.err.println("Error displaying error message!");
+//					e.printStackTrace();
+//				}
+//				
+//			}
+//		}
+//	}
+
+
+
+
 	@Override
 	public void parameterChange(ParameterChangeEvent event) {
+
+		// Ensure we are on the event dispatch thread
+		if (!( SwingUtilities.isEventDispatchThread() )) {
+			throw new IllegalStateException("AftershockStatsGUI.parameterChange called while not on the event dispatch thread!");
+		}
+
 		Parameter<?> param = event.getParameter();
 		
 		final CalcProgressBar progress = new CalcProgressBar(this, "", "", false);
@@ -1900,7 +2182,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 			setEnableParamsPostFetch(false);
 		} else if (param == fetchButton) {
 			setEnableParamsPostFetch(false);
-			CalcStep fetchStep = new CalcStep("Fetching Events",
+			GUICalcStep fetchStep = new GUICalcStep("Fetching Events",
 					"Contacting USGS ComCat Webservice. This is occasionally slow. "
 					+ "If it fails, trying again often works.", new Runnable() {
 						
@@ -1909,14 +2191,14 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 							fetchEvents();
 						}
 					});
-			CalcStep postFetchPlotStep = new CalcStep("Plotting Events/Data", "...", new Runnable() {
+			GUICalcStep postFetchPlotStep = new GUICalcStep("Plotting Events/Data", "...", new Runnable() {
 						
 						@Override
 						public void run() {
 							doPostFetchPlots();
 						}
 					});
-			CalcRunnable run = new CalcRunnable(progress, fetchStep, postFetchPlotStep);
+			GUICalcRunnable run = new GUICalcRunnable(this, fetchStep, postFetchPlotStep);
 			new Thread(run).start();
 		} else if (param == loadCatalogButton) {
 			if (loadCatalogChooser == null)
@@ -1924,7 +2206,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 			int ret = loadCatalogChooser.showOpenDialog(this);
 			if (ret == JFileChooser.APPROVE_OPTION) {
 				final File file = loadCatalogChooser.getSelectedFile();
-				CalcStep loadStep = new CalcStep("Loading events", "...", new Runnable() {
+				GUICalcStep loadStep = new GUICalcStep("Loading events", "...", new Runnable() {
 					
 					@Override
 					public void run() {
@@ -1935,14 +2217,14 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 						}
 					}
 				});
-				CalcStep postFetchPlotStep = new CalcStep("Plotting Events/Data", "...", new Runnable() {
+				GUICalcStep postFetchPlotStep = new GUICalcStep("Plotting Events/Data", "...", new Runnable() {
 					
 					@Override
 					public void run() {
 						doPostFetchPlots();
 					}
 				});
-				CalcRunnable run = new CalcRunnable(progress, loadStep, postFetchPlotStep);
+				GUICalcRunnable run = new GUICalcRunnable(this, loadStep, postFetchPlotStep);
 				new Thread(run).start();
 			}
 		} else if (param == saveCatalogButton) {
@@ -1978,7 +2260,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 			bParam.getEditor().refreshParamEditor();
 		} else if (param == computeBButton) {
 			setEnableParamsPostComputeB(false);
-			CalcStep bStep = new CalcStep("Computing b", "...", new Runnable() {
+			GUICalcStep bStep = new GUICalcStep("Computing b", "...", new Runnable() {
 				
 				@Override
 				public void run() {
@@ -1998,7 +2280,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 					tabbedPane.setSelectedIndex(mag_num_tab_index);
 				}
 			});
-			CalcRunnable run = new CalcRunnable(progress, bStep);
+			GUICalcRunnable run = new GUICalcRunnable(this, bStep);
 			new Thread(run).start();
 		} else if (param == bParam) {
 			setEnableParamsPostAfershockParams(false);
@@ -2022,7 +2304,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 			setEnableParamsPostAfershockParams(false);
 		} else if (param == computeAftershockParamsButton) {
 			setEnableParamsPostAfershockParams(false);
-			CalcStep computeStep = new CalcStep("Computing Aftershock Params", "...", new Runnable() {
+			GUICalcStep computeStep = new GUICalcStep("Computing Aftershock Params", "...", new Runnable() {
 
 				@Override
 				public void run() {
@@ -2067,7 +2349,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 				}
 				
 			});
-			CalcStep plotStep = new CalcStep("Plotting Model PDFs", "...", new Runnable() {
+			GUICalcStep plotStep = new GUICalcStep("Plotting Model PDFs", "...", new Runnable() {
 				
 				@Override
 				public void run() {
@@ -2093,7 +2375,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 					tabbedPane.setSelectedIndex(pdf_tab_index);
 				}
 			}, true);
-			CalcRunnable run = new CalcRunnable(progress, computeStep, plotStep);
+			GUICalcRunnable run = new GUICalcRunnable(this, computeStep, plotStep);
 			new Thread(run).start();
 		} else if (param == forecastStartTimeNowParam) {
 			SimpleDateFormat df = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss z");
@@ -2110,7 +2392,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 			forecastStartTimeParam.getEditor().refreshParamEditor();
 			forecastEndTimeParam.getEditor().refreshParamEditor();
 		} else if (param == computeAftershockForecastButton) {
-			CalcStep plotStep = new CalcStep("Computing/Plotting Forecast MFDs", "This can take some time...",
+			GUICalcStep plotStep = new GUICalcStep("Computing/Plotting Forecast MFDs", "This can take some time...",
 					new Runnable() {
 
 						@Override
@@ -2123,7 +2405,7 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 						}
 				
 			});
-			CalcStep tableStep = new CalcStep("Computing Forecast Table", "This can take some time...",
+			GUICalcStep tableStep = new GUICalcStep("Computing Forecast Table", "This can take some time...",
 					new Runnable() {
 
 						@Override
@@ -2137,9 +2419,28 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 						}
 				
 			});
-			CalcRunnable run = new CalcRunnable(progress, plotStep, tableStep);
+			GUICalcRunnable run = new GUICalcRunnable(this, plotStep, tableStep);
 			new Thread(run).start();
 		}
+	}
+
+	private double getTimeRemainingInUTCDay(){
+		double daysLeftInDay;
+		TimeZone.setDefault(utc);
+		GregorianCalendar origin = mainshock.getOriginTimeCal();
+		
+		SimpleDateFormat formatter=new SimpleDateFormat("d MMM yyyy, HH:mm:ss");
+		formatter.setTimeZone(utc); //utc=TimeZone.getTimeZone("UTC"));
+		
+		GregorianCalendar daybreak = new GregorianCalendar(
+				origin.get(GregorianCalendar.YEAR), origin.get(GregorianCalendar.MONTH), origin.get(GregorianCalendar.DAY_OF_MONTH));
+//		daybreak.setTimeZone(origin.getTimeZone());
+		
+//		System.out.println(formatter.format(origin.getTime()));
+//		System.out.println(formatter.format(daybreak.getTime()));
+//		
+		daysLeftInDay = 1.0 - ((double)(origin.getTimeInMillis() - daybreak.getTimeInMillis()))/ComcatAccessor.day_millis;
+		return daysLeftInDay;
 	}
 	
 	private void doPostFetchPlots() {
@@ -2280,9 +2581,15 @@ public class AftershockStatsGUI extends JFrame implements ParameterChangeListene
 			return;
 		}
 
-		// Run the GUI
+		// Run the GUI (Must run on the event dispatch thread!)
 
-		new AftershockStatsGUI();
+		SwingUtilities.invokeLater(new Runnable() {
+			@Override
+			public void run() {
+				new AftershockStatsGUI().setVisible(true);
+			}
+		});
+
 		return;
 	}
 

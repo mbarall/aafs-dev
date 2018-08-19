@@ -54,6 +54,10 @@ public class ForecastParameters {
 	public static final int CALC_METH_SUPPRESS = 2;		// Do not calculate result
 	public static final int CALC_METH_MAX = 2;			// Maximum value
 
+	// Special values of injectable text.
+
+	public static final String INJ_TXT_USE_DEFAULT = "use-default";	// Use the configured default
+
 
 	//----- Root parameters -----
 
@@ -77,12 +81,17 @@ public class ForecastParameters {
 
 	public int bayesian_calc_meth = CALC_METH_AUTO_PDL;
 
+	// Injectable text for PDL JSON files, or "" for none, or INJ_TXT_USE_DEFAULT for configured default.
+
+	public String injectable_text = INJ_TXT_USE_DEFAULT;
+
 	// Set control parameters to default.
 
 	public void set_default_control_params () {
 		generic_calc_meth = CALC_METH_AUTO_PDL;
 		seq_spec_calc_meth = CALC_METH_AUTO_PDL;
 		bayesian_calc_meth = CALC_METH_AUTO_PDL;
+		injectable_text = INJ_TXT_USE_DEFAULT;
 		return;
 	}
 
@@ -96,6 +105,7 @@ public class ForecastParameters {
 			generic_calc_meth  = prior_params.generic_calc_meth;
 			seq_spec_calc_meth = prior_params.seq_spec_calc_meth;
 			bayesian_calc_meth = prior_params.bayesian_calc_meth;
+			injectable_text    = prior_params.injectable_text;
 			return;
 		}
 
@@ -103,6 +113,20 @@ public class ForecastParameters {
 	
 		set_default_control_params();
 		return;
+	}
+
+	// Get the effective injectable text.
+	// Note: The return value is always non-null, and is "" if no injectable text is desired.
+
+	public String get_eff_injectable_text (String def_injectable_text) {
+		String result = injectable_text;
+		if (result.equals (INJ_TXT_USE_DEFAULT)) {
+			result = def_injectable_text;
+			if (result == null) {
+				result = "";
+			}
+		}
+		return result;
 	}
 
 
@@ -509,11 +533,31 @@ public class ForecastParameters {
 
 	//----- Transient parameters -----
 
+//	// The configured default injectable text, or "" if none, or null if not set.
+//	// Note: This parameter is not marshaled/unmarshaled.
+//
+//	public String def_injectable_text = null;
+
 	// Set transient parameters to default.
 
 	public void set_default_transient_params () {
+//		def_injectable_text = null;
 		return;
 	}
+
+//	// Get the effective injectable text.
+//	// Note: The return value is always non-null, and is "" if no injectable text is desired.
+//
+//	public String get_eff_injectable_text () {
+//		String result = injectable_text;
+//		if (result.equals (INJ_TXT_USE_DEFAULT)) {
+//			result = def_injectable_text;
+//			if (result == null) {
+//				result = "";
+//			}
+//		}
+//		return result;
+//	}
 
 
 	//----- Construction -----
@@ -576,6 +620,7 @@ public class ForecastParameters {
 		result.append ("generic_calc_meth = " + generic_calc_meth + "\n");
 		result.append ("seq_spec_calc_meth = " + seq_spec_calc_meth + "\n");
 		result.append ("bayesian_calc_meth = " + bayesian_calc_meth + "\n");
+		result.append ("injectable_text = " + injectable_text + "\n");
 
 		result.append ("generic_fetch_meth = " + generic_fetch_meth + "\n");
 		result.append ("generic_avail = " + generic_avail + "\n");
@@ -607,6 +652,10 @@ public class ForecastParameters {
 			result.append ("max_depth = " + max_depth + "\n");
 			result.append ("min_mag = " + min_mag + "\n");
 		}
+
+//		if (def_injectable_text != null) {
+//			result.append ("def_injectable_text = " + def_injectable_text + "\n");
+//		}
 
 		return result.toString();
 	}
@@ -647,9 +696,10 @@ public class ForecastParameters {
 
 		writer.marshalLong   ("forecast_lag"   , forecast_lag   );
 
-		writer.marshalInt ("generic_calc_meth" , generic_calc_meth );
-		writer.marshalInt ("seq_spec_calc_meth", seq_spec_calc_meth);
-		writer.marshalInt ("bayesian_calc_meth", bayesian_calc_meth);
+		writer.marshalInt    ("generic_calc_meth" , generic_calc_meth );
+		writer.marshalInt    ("seq_spec_calc_meth", seq_spec_calc_meth);
+		writer.marshalInt    ("bayesian_calc_meth", bayesian_calc_meth);
+		writer.marshalString ("injectable_text"   , injectable_text   );
 
 		writer.marshalInt     ("generic_fetch_meth", generic_fetch_meth);
 		writer.marshalBoolean ("generic_avail"     , generic_avail     );
@@ -697,9 +747,10 @@ public class ForecastParameters {
 
 		forecast_lag    = reader.unmarshalLong   ("forecast_lag"   );
 
-		generic_calc_meth  = reader.unmarshalInt ("generic_calc_meth" , CALC_METH_MIN, CALC_METH_MAX);
-		seq_spec_calc_meth = reader.unmarshalInt ("seq_spec_calc_meth", CALC_METH_MIN, CALC_METH_MAX);
-		bayesian_calc_meth = reader.unmarshalInt ("bayesian_calc_meth", CALC_METH_MIN, CALC_METH_MAX);
+		generic_calc_meth  = reader.unmarshalInt    ("generic_calc_meth" , CALC_METH_MIN, CALC_METH_MAX);
+		seq_spec_calc_meth = reader.unmarshalInt    ("seq_spec_calc_meth", CALC_METH_MIN, CALC_METH_MAX);
+		bayesian_calc_meth = reader.unmarshalInt    ("bayesian_calc_meth", CALC_METH_MIN, CALC_METH_MAX);
+		injectable_text    = reader.unmarshalString ("injectable_text");
 
 		generic_fetch_meth = reader.unmarshalInt     ("generic_fetch_meth", FETCH_METH_MIN, FETCH_METH_MAX);
 		generic_avail      = reader.unmarshalBoolean ("generic_avail");
