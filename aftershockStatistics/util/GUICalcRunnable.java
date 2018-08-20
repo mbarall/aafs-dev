@@ -15,9 +15,9 @@ import org.opensha.sha.gui.infoTools.CalcProgressBar;
  */
 public class GUICalcRunnable implements Runnable {
 
-	// The owner of the progress bar.
+	// The progress bar.
 
-	private Component owner;
+	private GUICalcProgressBar progress_bar;
 
 	// The calculation steps to perform.
 
@@ -29,12 +29,19 @@ public class GUICalcRunnable implements Runnable {
 
 	// Setting this flag true forces all calculation steps to occur in the event dispatch thread.
 
-	private boolean forceEDT = true;
+	private boolean forceEDT = false;
 
 	// To construct, specify the owner of the progress monitor window, and the calculation steps.
 		
 	public GUICalcRunnable(Component owner, GUICalcStep... calcSteps) {
-		this.owner = owner;
+		this.progress_bar = new GUICalcProgressBar (owner, "", "", false);
+		this.steps = calcSteps;
+	}
+
+	// Or, you can pass in the progress bar.
+		
+	public GUICalcRunnable(GUICalcProgressBar progress_bar, GUICalcStep... calcSteps) {
+		this.progress_bar = progress_bar;
 		this.steps = calcSteps;
 	}
 
@@ -43,10 +50,9 @@ public class GUICalcRunnable implements Runnable {
 	@Override
 	public void run() {
 
-		// Create and initialize the progress manager
+		// Initialize the progress bar
 
-		GUIProgressManager progress_manager = new GUIProgressManager (owner);
-		progress_manager.req_init();
+		GUICalcProgressBar my_progress_bar = progress_bar.req_init();
 
 		// No exception so far
 
@@ -57,9 +63,9 @@ public class GUICalcRunnable implements Runnable {
 
 		for (final GUICalcStep step : steps) {
 
-			// Update the progress manager
+			// Update the progress bar
 
-			progress_manager.req_update (step.get_title(), step.get_progressMessage());
+			my_progress_bar.req_update (step.get_title(), step.get_progressMessage());
 
 			// Save the title of the current calculation step
 
@@ -101,9 +107,9 @@ public class GUICalcRunnable implements Runnable {
 			}
 		}
 
-		// Dispose of the progress manager
+		// Dispose of the progress bar
 
-		progress_manager.req_dispose();
+		my_progress_bar.req_dispose();
 
 		// If an exception occurred, report it to the user
 
